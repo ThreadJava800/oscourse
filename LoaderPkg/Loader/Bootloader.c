@@ -71,6 +71,60 @@ HandleProtocolFallback (
   return Status;
 }
 
+STATIC
+EFI_STATUS
+SetModeWithSmallestScanLine (
+  IN EFI_GRAPHICS_OUTPUT_PROTOCOL  *GraphicsOutput
+  )
+{
+  EFI_STATUS                           Status;
+  UINT32                               ModeCount;
+  UINT32                               MinScanLine;
+  UINTN                                SizeOfModeInfo;
+
+  EFI_GRAPHICS_OUTPUT_MODE_INFORMATION *CurrModeInfo;
+  UINT32                               AppropriateModeNumber;
+
+  ASSERT (GraphicsOutput != NULL);
+  ASSERT (GraphicsOutput->Mode != NULL);
+
+  ModeCount = GraphicsOutput->Mode->MaxMode;
+  MinScanLine = __UINT32_MAX__;
+
+  for (UINT32 i = 0; i < ModeCount; ++i) {
+    SizeOfModeInfo = 0;
+    CurrModeInfo = NULL;
+
+    Status = GraphicsOutput->QueryMode (
+      GraphicsOutput,
+      i,
+      &SizeOfModeInfo,
+      &CurrModeInfo
+      );
+
+    if (EFI_ERROR(Status)) {
+      DEBUG ((DEBUG_ERROR, "JOS: Failed to query mode info - %r\n", Status));
+      return Status;
+    }
+    if (SizeOfModeInfo != sizeof(EFI_GRAPHICS_OUTPUT_MODE_INFORMATION)) {
+      DEBUG ((DEBUG_ERROR, "JOS: Query mode info size mismatch: expected %d, got: %d\n",
+              sizeof(EFI_GRAPHICS_OUTPUT_MODE_INFORMATION), SizeOfModeInfo));
+      return Status;
+    }
+
+    if (CurrModeInfo->PixelsPerScanLine < MinScanLine) {
+      MinScanLine = CurrModeInfo->PixelsPerScanLine;
+      AppropriateModeNumber = i;
+    }
+  }
+
+  Status = GraphicsOutput->SetMode (
+    GraphicsOutput,
+    AppropriateModeNumber
+    );
+  return Status;
+}
+
 /**
   Initialise graphics rendering and set loader params.
 
@@ -104,15 +158,10 @@ InitGraphics (
     return Status;
   }
 
-  //
-  // LAB 1: Your code here.
-  //
-  // Switch to the maximum or any other resolution of your preference.
-  // Refer to Graphics Output Protocol description in UEFI spec for
-  // more details.
-  //
-  // Hint: Use QueryMode/SetMode functions.
-  //
+  Status = SetModeWithSmallestScanLine (GraphicsOutput);
+  if (EFI_ERROR (Status)) {
+    DEBUG ((DEBUG_ERROR, "JOS: Cannot set mode with smalles scan line - %r\n", Status));
+  }
 
   //
   // Fill screen with black.
@@ -269,59 +318,54 @@ GetKernelFile (
 
   ASSERT (FileProtocol != NULL);
 
-  //
-  // Use gBS->HandleProtocol() to find loaded image protocol
-  // (use gEfiLoadedImageProtocolGuid) from gImageHandle to
-  // get loader's containing device.
-  //
-  // LAB 1: Your code here
-  (void)LoadedImage;
-
+  Status = gBS->HandleProtocol (
+    gImageHandle,
+    &gEfiLoadedImageProtocolGuid,
+    (VOID**)&LoadedImage
+    );
   if (EFI_ERROR (Status)) {
     DEBUG ((DEBUG_ERROR, "JOS: Cannot find LoadedImage protocol - %r\n", Status));
     return Status;
   }
-
   if (LoadedImage->DeviceHandle == NULL) {
     DEBUG ((DEBUG_ERROR, "JOS: LoadedImage protocol has no DeviceHandle\n"));
     return EFI_UNSUPPORTED;
   }
 
-  //
-  // Use gBS->HandleProtocol() to find file system protocol
-  // (use gEfiSimpleFileSystemProtocolGuid) from LoadedImage->DeviceHandle
-  // to read the kernel from it later.
-  //
-  // LAB 1: Your code here
-  (void)FileSystem;
-
+  Status = gBS->HandleProtocol (
+    LoadedImage->DeviceHandle,
+    &gEfiSimpleFileSystemProtocolGuid,
+    (VOID**)&FileSystem
+    );
   if (EFI_ERROR (Status)) {
     DEBUG ((DEBUG_ERROR, "JOS: Cannot find own FileSystem protocol - %r\n", Status));
     return Status;
   }
 
-  //
-  // Use FileSystem->OpenVolume() to open root directory, in which kernel is stored
-  // NOTE: Don't forget to Use ->Close after you've done using it.
-  //
-  // LAB 1: Your code here
-  (void)CurrentDriveRoot;
-
+  Status = FileSystem->OpenVolume (
+    FileSystem,
+    &CurrentDriveRoot
+    );
   if (EFI_ERROR (Status)) {
     DEBUG ((DEBUG_ERROR, "JOS: Cannot access own file system - %r\n", Status));
     return Status;
   }
 
-  //
-  // Use ->Open to open kernel file located at KERNEL_PATH
-  // for reading (as EFI_FILE_MODE_READ)
-  //
-  // LAB 1: Your code here
-  KernelFile = NULL;
-
+  Status = CurrentDriveRoot->Open (
+    CurrentDriveRoot,
+    &KernelFile,
+    KERNEL_PATH,
+    EFI_FILE_MODE_READ,
+    0
+    );
   if (EFI_ERROR (Status)) {
     DEBUG ((DEBUG_ERROR, "JOS: Cannot access own file system - %r\n", Status));
     return Status;
+  }
+
+  Status = CurrentDriveRoot->Close (CurrentDriveRoot);
+  if (EFI_ERROR(Status)) {
+    DEBUG ((DEBUG_ERROR, "JOS: Cannot close drive root directory - %r\n", Status));
   }
 
   *FileProtocol = KernelFile;
@@ -991,7 +1035,7 @@ UefiMain (
   volatile BOOLEAN   Connected;
   DEBUG ((DEBUG_INFO, "JOS: Awaiting debugger connection\n"));
 
-  Connected = FALSE;
+  Connected = TRUE;
   while (!Connected) {
     ;
   }
