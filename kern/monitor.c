@@ -19,6 +19,7 @@
 int mon_help(int argc, char **argv, struct Trapframe *tf);
 int mon_kerninfo(int argc, char **argv, struct Trapframe *tf);
 int mon_backtrace(int argc, char **argv, struct Trapframe *tf);
+int mon_devinfo(int argc, char **argv, struct Trapframe *tf);
 
 struct Command {
     const char *name;
@@ -31,6 +32,7 @@ static struct Command commands[] = {
         {"help", "Display this list of commands", mon_help},
         {"kerninfo", "Display information about the kernel", mon_kerninfo},
         {"backtrace", "Print stack backtrace", mon_backtrace},
+        {"devinfo", "Print developer info", mon_devinfo},
 };
 #define NCOMMANDS (sizeof(commands) / sizeof(commands[0]))
 
@@ -57,10 +59,38 @@ mon_kerninfo(int argc, char **argv, struct Trapframe *tf) {
     return 0;
 }
 
+static uint64_t
+get_return_addr(const uint64_t frame_rbp) {
+    return *((uint64_t *)(frame_rbp + 8));
+}
+
 int
 mon_backtrace(int argc, char **argv, struct Trapframe *tf) {
-    // LAB 2: Your code here
+    uint64_t rbp = read_rbp();
+    uint64_t rip = get_return_addr(rbp);
 
+    cprintf("Stack backtrace:\n");
+
+    while (rbp != 0) {
+        cprintf("  rbp %016lx  rip %016lx\n", rbp, rip);
+
+        struct Ripdebuginfo dbg_info = {};
+        debuginfo_rip(rip, &dbg_info);
+        cprintf("    %s:%d: %s\n", dbg_info.rip_file, dbg_info.rip_line, dbg_info.rip_fn_name);
+
+        rbp = *((uint64_t *)(rbp));
+        rip = get_return_addr(rbp);
+    }
+    return 0;
+}
+
+int
+mon_devinfo(int argc, char **argv, struct Trapframe *tf) {
+    cprintf("Thank you for choosing ANF Software solution!\n");
+    cprintf("\tThis operating system was implemented by Arstozkian citizens!\n");
+    cprintf("\tAlways remember: big brother is always watching you!\n");
+    cprintf("\tGlory to Arstozka!\n");
+    cprintf("\tCopyright: The Arstozkian government 1984-FOREVER. All rights reserved.\n");
     return 0;
 }
 
