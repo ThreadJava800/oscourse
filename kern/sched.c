@@ -24,9 +24,25 @@ sched_yield(void) {
      * simply drop through to the code
      * below to halt the cpu */
 
-    // LAB 3: Your code here:
-    env_run(&envs[0]);
+    size_t NewProcId;
+    if (curenv == NULL) {
+        NewProcId = ~0ULL;
+    } else {
+        NewProcId = ENVX(curenv->env_id);
+    }
 
+    size_t CheckProcId = NewProcId;
+    do {
+        CheckProcId = ENVX(CheckProcId + 1);
+        if (envs[CheckProcId].env_status == ENV_RUNNABLE) {
+            env_run(&envs[CheckProcId]);
+        }
+    } while (NewProcId != CheckProcId);
+
+    if (envs[CheckProcId].env_status == ENV_RUNNING) {
+        env_run(&envs[CheckProcId]);
+    }
+    
     cprintf("Halt\n");
 
     /* No runnable environments,

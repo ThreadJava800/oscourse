@@ -96,7 +96,29 @@ find_function(const char *const fname) {
      * It may also be useful to look to kernel symbol table for symbols defined
      * in assembly. */
 
-    // LAB 3: Your code here:
+    if (!strcmp(fname, "sys_yield")) {
+		return (uintptr_t)sys_yield;
+    }
+    if (!strcmp(fname, "sys_exit")) {
+		return (uintptr_t)sys_exit;
+    }
+
+    struct Dwarf_Addrs Dwarfs;
+	load_kernel_dwarf_info(&Dwarfs);
+
+    uintptr_t FuncAddr = 0;
+    int status = address_by_fname(&Dwarfs, fname, &FuncAddr);
+    if (status == 0) {
+        if (FuncAddr != 0) {
+            return FuncAddr;
+        }
+    }
+
+    // Last resort
+    status = naive_address_by_fname(&Dwarfs, fname, &FuncAddr);
+    if (status == 0) {
+        return FuncAddr;
+    }
 
     return 0;
 }
