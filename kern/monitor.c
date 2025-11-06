@@ -11,6 +11,7 @@
 #include <kern/console.h>
 #include <kern/monitor.h>
 #include <kern/kdebug.h>
+// #include <kern/env.h>
 
 #define WHITESPACE "\t\r\n "
 #define MAXARGS    16
@@ -66,21 +67,53 @@ get_return_addr(const uint64_t frame_rbp) {
 
 int
 mon_backtrace(int argc, char **argv, struct Trapframe *tf) {
-    uint64_t rbp = read_rbp();
-    uint64_t rip = get_return_addr(rbp);
+    static const uint32_t MAX_STACK_DEPTH = 0x100;
+    
+    register uint64_t start_rip = read_rip();
+
+    uint64_t *rsp = (uint64_t*)read_rsp();
 
     cprintf("Stack backtrace:\n");
+    for (uint32_t i = 0; i < MAX_STACK_DEPTH; ++i) {
+        if (start_rip - 0x10000 <= rsp[i] && rsp[i] <= start_rip + 0x10000) {
+            if (*((uint8_t*)rsp[i] - 5) != 0xE8 &&
+                *((uint8_t*)rsp[i] - 2) != 0xFF) {
+                // not a call instruction
+                continue;
+            }
 
-    while (rbp != 0) {
-        cprintf("  rbp %016lx  rip %016lx\n", rbp, rip);
+            struct Ripdebuginfo dbg_info = {};
+            debuginfo_rip(rsp[i], &dbg_info);
+            cprintf("  rip %016lx\n", rsp[i]);
+            cprintf("    %s:%d: %s\n", dbg_info.rip_file, dbg_info.rip_line, dbg_info.rip_fn_name);
 
-        struct Ripdebuginfo dbg_info = {};
-        debuginfo_rip(rip, &dbg_info);
-        cprintf("    %s:%d: %s\n", dbg_info.rip_file, dbg_info.rip_line, dbg_info.rip_fn_name);
-
-        rbp = *((uint64_t *)(rbp));
-        rip = get_return_addr(rbp);
+            // start_rip = rsp[i];
+        }
     }
+
+    // cprintf("Stack backtrace:\n");
+    // for (uint32_t i = 0; i < MAX_STACK_DEPTH; ++i) {
+    //     cprintf("RIP = 0x%lx\n", frames[i]);
+        // struct Ripdebuginfo dbg_info = {};
+        // debuginfo_rip(frames[i], &dbg_info);
+        // cprintf("    %s:%d: %s\n", dbg_info.rip_file, dbg_info.rip_line, dbg_info.rip_fn_name);
+    // }
+
+    // uint64_t rbp = read_rbp();
+    // uint64_t rip = get_return_addr(rbp);
+
+    // cprintf("Stack backtrace:\n");
+
+    // while (rbp != 0) {
+    //     // cprintf("  rbp %016lx  rip %016lx\n", rbp, rip);
+
+        // struct Ripdebuginfo dbg_info = {};
+        // debuginfo_rip(rip, &dbg_info);
+    //     // cprintf("    %s:%d: %s\n", dbg_info.rip_file, dbg_info.rip_line, dbg_info.rip_fn_name);
+
+    //     rbp = *((uint64_t *)(rbp));
+    //     rip = get_return_addr(rbp);
+    // }
     return 0;
 }
 

@@ -1,0 +1,12 @@
+{
+    "files.associations": {
+        "cstdlib": "c",
+        "cpuid.h": "c",
+        "simpletextinex.h": "c",
+        "elf.h": "c",
+        "elf64.h": "c",
+        "uefi.h": "c",
+        "memory_resource": "c",
+        "*.def": "c"
+    }
+}
