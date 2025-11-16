@@ -105,9 +105,27 @@ mon_dumpcmos(int argc, char **argv, struct Trapframe *tf) {
     // Dump CMOS memory in the following format:
     // 00: 00 11 22 33 44 55 66 77 88 99 AA BB CC DD EE FF
     // 10: 00 ..
-    // Make sure you understand the values read.
-    // Hint: Use cmos_read8()/cmos_write8() functions.
-    // LAB 4: Your code here
+
+    // 0x0 - seconds
+    // 0x2 - minutes
+    // 0x4 - hours
+    // 0x6 - day of week
+    // 0x7 - date
+    // 0x8 - month
+    // 0x9 - year
+    // 0xA - 0xD - A-D register statuses
+    // 0xE - 0xF - diagnostics/shutdown status
+
+    for (unsigned i = 0; i < CMOS_SIZE; ++i) {
+        if (i % 16 == 0) {
+            if (i != 0) {
+                cprintf("\n");
+            }
+            cprintf("%02x:", i);
+        }
+        cprintf(" %02x", cmos_read8(i));
+    }
+    cprintf("\n");
 
     return 0;
 }
