@@ -63,6 +63,9 @@ struct Segdesc32 gdt[2 * NCPU + 7] = {
 struct Pseudodesc gdt_pd = {sizeof(gdt) - 1, (unsigned long)gdt};
 
 extern void (*clock_thdlr)();
+extern void (*timer_thdlr)();
+
+extern struct Timer *timer_for_schedule;
 
 static const char *
 trapname(int trapno) {
@@ -98,7 +101,7 @@ trapname(int trapno) {
 void
 trap_init(void) {
     idt[IRQ_OFFSET + IRQ_CLOCK] = GATE(0, GD_KT, &clock_thdlr, 0);
-    // LAB 5: Your code here
+    idt[IRQ_OFFSET + IRQ_TIMER] = GATE(0, GD_KT, &timer_thdlr, 0);
 
     /* Per-CPU setup */
     trap_init_percpu();
@@ -215,12 +218,9 @@ trap_dispatch(struct Trapframe *tf) {
         }
         return;
     case IRQ_OFFSET + IRQ_CLOCK:
-        rtc_check_status();
-        pic_send_eoi(IRQ_CLOCK); // it's ok, as interrupts are disabled at this point
-        sched_yield();
     case IRQ_OFFSET + IRQ_TIMER:
-        // LAB 5: Your code here
-        return;
+        timer_for_schedule->handle_interrupts();
+        sched_yield();
     default:
         print_trapframe(tf);
         if (!(tf->tf_cs & 3))
