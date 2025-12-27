@@ -82,7 +82,15 @@ list_init(struct List *list) {
  */
 inline static void __attribute__((always_inline))
 list_append(struct List *list, struct List *new) {
-    // LAB 6: Your code here
+    assert(list);
+    assert(list->next);
+    assert(new);
+
+    new->prev = list;
+    new->next = list->next;
+
+    list->next->prev = new;
+    list->next = new;
 }
 
 /*
@@ -91,7 +99,13 @@ list_append(struct List *list, struct List *new) {
  */
 inline static struct List *__attribute__((always_inline))
 list_del(struct List *list) {
-    // LAB 6: Your code here
+    assert(list);
+    assert(list->prev);
+    assert(list->next);
+
+    list->next->prev = list->prev;
+    list->prev->next = list->next;
+    list_init(list);
 
     return list;
 }
@@ -172,9 +186,29 @@ alloc_child(struct Page *parent, bool right) {
     assert_physical(parent);
     assert(parent);
 
-    // LAB 6: Your code here
+    if (parent->class == 0) {
+        return NULL;
+    }
 
-    struct Page *new = NULL;
+    struct Page *new = alloc_descriptor(parent->state);
+    assert(new);
+
+    new->parent = parent;
+
+    if (parent->refc == 0) {
+        new->refc = 0;
+    } else {
+        new->refc = 1;
+    }
+
+    new->class = parent->class - 1; // twice smaller
+    if (right) {
+        parent->right = new;
+        new->addr = parent->addr + CLASS_SIZE(new->class - CLASS_BASE);
+    } else {
+        parent->left = new;
+        new->addr = parent->addr;
+    }
 
     return new;
 }
@@ -301,19 +335,37 @@ page_unref(struct Page *page) {
     }
 }
 
+static int
+get_region_class(const uintptr_t addr, const size_t size) {
+    int class = -1;
+
+    while (size >= CLASS_SIZE(class + 1) && !(addr & CLASS_MASK(class + 1))) {
+        class += 1;
+        if (class == MAX_CLASS) {
+            break;
+        }
+    }
+
+    return class;
+}
+
 static void
 attach_region(uintptr_t start, uintptr_t end, enum PageState type) {
     if (trace_memory_more)
         cprintf("Attaching memory region [%08lX, %08lX] with type %d\n", start, end - 1, type);
-    int class = 0, res = 0;
-
-    (void)class;
-    (void)res;
+    int class = 0;
 
     start = ROUNDDOWN(start, CLASS_SIZE(0));
     end = ROUNDUP(end, CLASS_SIZE(0));
 
-    // LAB 6: Your code here
+    while (start < end) {
+        class = get_region_class(start, end - start);
+
+        struct Page *const new_page = page_lookup(NULL, start, class, type, true);
+        assert(new_page);
+
+        start += CLASS_SIZE(class);
+    }
 }
 
 /*
@@ -423,7 +475,18 @@ dump_virtual_tree(struct Page *node, int class) {
 
 void
 dump_memory_lists(void) {
-    // LAB 6: Your code here
+    cprintf("Free pages:\n");
+    for (size_t i = 0; i < MAX_CLASS; ++i) {
+        cprintf("\tFree pages for class = %zu:\n", i);
+
+        const struct List *curr_class = &free_classes[i];
+        do {
+            struct Page *const free_page = (struct Page*)curr_class;
+            cprintf("\t\t[0x%lx, 0x%llx]\n", page2pa(free_page), page2pa(free_page) + CLASS_SIZE(i));
+
+            curr_class = curr_class->next;
+        } while (curr_class != &free_classes[i]);
+    }
 }
 
 
@@ -521,12 +584,12 @@ detect_memory(void) {
     /* Attach reserved regions */
 
     /* Attach first page as reserved memory */
-    // LAB 6: Your code here
+    attach_region(0, PAGE_SIZE, RESERVED_NODE);
 
     /* Attach kernel and old IO memory
      * (from IOPHYSMEM to the physical address of end label. end points the the
      *  end of kernel executable image.)*/
-    // LAB 6: Your code here
+    attach_region(IOPHYSMEM, PADDR(end), RESERVED_NODE);
 
     /* Detect memory via ether UEFI or CMOS */
     if (uefi_lp && uefi_lp->MemoryMap) {
@@ -553,8 +616,11 @@ detect_memory(void) {
 
             /* Attach memory described by memory map entry described by start
              * of type type*/
-            // LAB 6: Your code here
-            (void)type;
+            attach_region(
+                start->PhysicalStart,
+                start->PhysicalStart + start->NumberOfPages * EFI_PAGE_SIZE,
+                type
+            );
 
             start = (void *)((uint8_t *)start + uefi_lp->MemoryMapDescriptorSize);
         }
