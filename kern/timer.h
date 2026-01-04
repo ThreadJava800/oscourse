@@ -9,6 +9,8 @@
 
 #include <inc/acpi_base.h>
 
+#pragma pack(push)
+
 struct Timer {
     const char *timer_name;          /* Timer name */
     void (*timer_init)(void);        /* Timer init */

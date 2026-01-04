@@ -3,7 +3,7 @@
 
 #include <inc/types.h>
 
-#pragma pack(push, 1)
+#pragma pack(push)
 
 typedef struct {
     char Signature[8];
@@ -33,5 +33,7 @@ typedef struct {
     ACPISDTHeader h;
     uint32_t PointerToOtherSDT[];
 } RSDT;
+
+#pragma pack(pop)
 
 #endif // JOS_INC_ACPI_BASE_H
