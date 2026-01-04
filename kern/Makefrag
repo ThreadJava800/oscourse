@@ -11,7 +11,8 @@ KERN_LDFLAGS := $(LDFLAGS) -T kern/kernel.ld -nostdlib
 
 # We snatch the use of a couple handy source files
 # from the lib directory, to avoid gratuitous code duplication.
-KERN_SRCFILES := kern/bootstrap.S \
+KERN_SRCFILES := kern/acpi.c \
+			kern/bootstrap.S \
 			kern/entry.S \
 			kern/init.c \
 			kern/console.c \
