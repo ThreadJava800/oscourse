@@ -1,10 +1,6 @@
-#include "drivers/pci/pci.h"
-#include "inc/error.h"
-#include "inc/stdio.h"
 #include <drivers/virtio/virtio.h>
-#include <stdbool.h>
-#include <stddef.h>
-#include <stdlib.h>
+#include <inc/error.h>
+#include <inc/stdio.h>
 
 bool
 virtio_check(PciDevice *dev, uint16_t *id) {

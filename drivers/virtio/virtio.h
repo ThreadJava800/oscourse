@@ -7,7 +7,6 @@
 
 #include <inc/types.h>
 #include <drivers/pci/pci.h>
-#include <stdalign.h>
 
 #define VIRTIO_VENDOR_ID       0x1AF4
 #define VIRTIO_DEVICE_ID_START 0x1040
