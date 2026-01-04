@@ -1,5 +1,5 @@
 /**
-    Virtio 1.0 header file.
+    Legacy Virtio (0.9.5) header file.
     Adopted from OVMF.
 **/
 #ifndef JOS_DRIVERS_VIRTIO_VIRTIO_H
@@ -12,64 +12,24 @@
 #define VIRTIO_DEVICE_ID_START 0x1040
 #define VIRTIO_DEVICE_ID_END   0x107f
 
-#define VIRTIO_DEVICE_ID_NETWORK_CARD 1
+//
+// VirtIo Device Specific Configuration Offsets
+//
+#define VIRTIO_DEVICE_SPECIFIC_CONFIGURATION_OFFSET_PCI 20
 
 //
-// Structures for parsing the VirtIo 1.0 specific PCI capabilities from the
-// config space
+// PCI VirtIo Header Offsets
 //
-#pragma pack(push)
-typedef struct {
-    PciCapabilityHdr vendor_hdr;
-    uint8_t config_type; // Identifies the specific VirtIo 1.0 config structure
-    uint8_t bar;         // The BAR that contains the structure
-    uint8_t padding[3];
-    uint32_t offset; // Offset within Bar until the start of the structure
-    uint32_t length; // Length of the structure
-} VirtioPciCapability;
-#pragma pack(pop)
+#define VIRTIO_PCI_OFFSET_DEVICE_FEATURES     0x00
+#define VIRTIO_PCI_OFFSET_GUEST_FEATURES      0x04
+#define VIRTIO_PCI_OFFSET_QUEUE_ADDRESS       0x08
+#define VIRTIO_PCI_OFFSET_QUEUE_SIZE          0x0C
+#define VIRTIO_PCI_OFFSET_QUEUE_SELECT        0x0E
+#define VIRTIO_PCI_OFFSET_QUEUE_NOTIFY        0x10
+#define VIRTIO_PCI_OFFSET_QUEUE_DEVICE_STATUS 0x12
+#define VIRTIO_PCI_OFFSET_QUEUE_DEVICE_ISR    0x13
 
-//
-// Values for the VirtioPciCapability.config_type field
-//
-#define VIRTIO_PCI_CAP_COMMON_CFG 1 // Common configuration
-#define VIRTIO_PCI_CAP_NOTIFY_CFG 2 // Notifications
-#define VIRTIO_PCI_CAP_DEVICE_CFG 4 // Device specific configuration
-
-//
-// Structure pointed-to by Bar and Offset in VIRTIO_PCI_CAP when ConfigType is
-// VIRTIO_PCI_CAP_COMMON_CFG
-//
-#pragma pack(push)
-typedef struct {
-    uint32_t device_feature_select;
-    uint32_t device_feature;
-    uint32_t driver_feature_select;
-    uint32_t driver_feature;
-    uint16_t msix_config;
-    uint16_t num_queues;
-    uint8_t device_status;
-    uint8_t config_generation;
-    uint16_t queue_select;
-    uint16_t queue_size;
-    uint16_t queue_msix_vector;
-    uint16_t queue_enable;
-    uint16_t queue_notify_off;
-    uint64_t queue_desc;
-    uint64_t queue_avail;
-    uint64_t queue_used;
-} VirtioPciCommonConfig;
-#pragma pack(pop)
-
-//
-// VirtIo 1.0 device status bits
-//
-#define VSTAT_FEATURES_OK (1u << 3)
-
-//
-// VirtIo 1.0 reserved (device-independent) feature bits
-//
-#define VIRTIO_F_VERSION_1 (1u << 32)
+#define VIRTIO_PCI_BAR_INDEX 0
 
 /* This marks a buffer as continuing via the next field. */
 #define VIRTQ_DESC_F_NEXT 1
@@ -78,7 +38,6 @@ typedef struct {
 /* This means the buffer contains a list of buffer descriptors. */
 #define VIRTQ_DESC_F_INDIRECT 4
 #define VIRTQ_DESC_ELEM_SIZE  sizeof(VirtqDescriptor)
-#define VIRTQ_DESC_ALIGNMENT  16
 
 typedef struct {
     uint64_t address;
@@ -110,7 +69,6 @@ typedef struct {
 } VirtqUsedElem;
 
 #define VIRTQ_USED_ELEM_SIZE    8
-#define VIRTQ_USED_ALIGNMENT    4
 #define VIRTQ_USED_FLAGS_OFFSET 0
 #define VIRTQ_USED_IDX_OFFSET   2
 #define VIRTQ_USED_RING_OFFSET  4
@@ -136,6 +94,26 @@ typedef struct {
     void *buffer;
     size_t buffer_size;
 } Virtq;
+
+//
+// virtio-0.9.5, 2.2.2.1 Device Status
+//
+#define VSTAT_ACK       BIT0
+#define VSTAT_DRIVER    BIT1
+#define VSTAT_DRIVER_OK BIT2
+#define VSTAT_FAILED    BIT7
+
+//
+// virtio-0.9.5, Appendix B: Reserved (Device-Independent) Feature Bits
+//
+#define VIRTIO_F_NOTIFY_ON_EMPTY    BIT24
+#define VIRTIO_F_RING_INDIRECT_DESC BIT28
+#define VIRTIO_F_RING_EVENT_IDX     BIT29
+
+typedef struct {
+    PciDevice *pci_dev;
+    uint16_t id;
+} VirtioDevice;
 
 int
 virtq_init(Virtq *virtq, void *buffer, size_t buffer_size, size_t queue_size);

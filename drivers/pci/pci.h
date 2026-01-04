@@ -22,6 +22,7 @@ typedef struct {
     ECAM ecam_info;
 } MCFG;
 
+#pragma pack(push)
 typedef struct {
     uint8_t capability_id;
     uint8_t next_capability_ptr;
@@ -31,11 +32,17 @@ typedef struct PciBar PciBar;
 typedef struct PciBus PciBus;
 typedef struct PciDevice PciDevice;
 
+typedef enum {
+    PciBarNotPresent,
+    PciBarPMIO,
+    PciBarMMIO
+} PciBarType;
+
 struct PciBar {
     uint32_t base;
     uint32_t size;
+    PciBarType type;
 };
-
 
 struct PciDevice {
     uint8_t num;
@@ -66,6 +73,7 @@ struct PciBus {
     PciDevice devices[MAX_PCI_DEVICE_CNT];
     size_t device_cnt;
 };
+#pragma pack(pop)
 
 #define PCI_VENDOR_ID        0x00
 #define PCI_DEVICE_ID        0x02
@@ -82,8 +90,6 @@ struct PciBus {
 #define PCI_SUBCLASS_PCI     0x04
 
 #define PCI_SECONDARY_BUS    0x19
-
-#define PCI_CAPABILITY_ID_VENDOR 0x09
 
 int pci_init();
 void pci_dump_tree();
@@ -112,5 +118,7 @@ void pci_access_write8(PciDevice *dev, uint8_t bar_index, uint8_t offset, uint8_
 void pci_access_write16(PciDevice *dev, uint8_t bar_index, uint8_t offset, uint16_t value);
 void pci_access_write32(PciDevice *dev, uint8_t bar_index, uint8_t offset, uint32_t value);
 void pci_access_write64(PciDevice *dev, uint8_t bar_index, uint8_t offset, uint64_t value);
+
+PciBarType pci_get_bar_type(PciDevice *dev, uint8_t bar_index);
 
 #endif // JOS_INC_PCI_H
