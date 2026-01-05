@@ -35,3 +35,90 @@ bool pci_enumerate_devices() {
 
     return true;
 }
+
+uint8_t pci_get_capability_pointer(PciDevice *dev) {
+    panic("pci_get_capability_pointer: Not yet implemented!");
+    return 0;
+}
+
+uint16_t pci_get_vid(PciDevice *dev) {
+    panic("pci_get_vid: Not yet implemented!");
+    return 0;
+}
+
+uint16_t pci_get_did(PciDevice *dev) {
+    panic("pci_get_did: Not yet implemented!");
+    return 0;
+}
+
+uint8_t pci_config_read8(PciDevice *dev, uint8_t offset) {
+    panic("pci_config_read8: Not yet implemented!");
+    return 0;
+}
+
+uint16_t pci_config_read16(PciDevice *dev, uint8_t offset) {
+    panic("pci_config_read16: Not yet implemented!");
+    return 0;
+}
+
+uint32_t pci_config_read32(PciDevice *dev, uint8_t offset) {
+    panic("pci_config_read32: Not yet implemented!");
+    return 0;
+}
+
+uint64_t pci_config_read64(PciDevice *dev, uint8_t offset) {
+    panic("pci_config_read64: Not yet implemented!");
+    return 0;
+}
+
+uint8_t pci_access_read8(PciDevice *dev, uint8_t bar_index, uint8_t offset) {
+    panic("pci_access_read8: Not yet implemented!");
+    return 0;
+}
+
+uint16_t pci_access_read16(PciDevice *dev, uint8_t bar_index, uint8_t offset) {
+    panic("pci_access_read16: Not yet implemented!");
+    return 0;
+}
+
+uint32_t pci_access_read32(PciDevice *dev, uint8_t bar_index, uint8_t offset) {
+    panic("pci_access_read32: Not yet implemented!");
+    return 0;
+}
+
+uint64_t pci_access_read64(PciDevice *dev, uint8_t bar_index, uint8_t offset) {
+    panic("pci_access_read64: Not yet implemented!");
+    return 0;
+}
+
+void pci_config_write8(PciDevice *dev, uint8_t value) {
+    panic("pci_config_write8: Not yet implemented!");
+}
+
+void pci_config_write16(PciDevice *dev, uint16_t value) {
+    panic("pci_config_write16: Not yet implemented!");
+}
+
+void pci_config_write32(PciDevice *dev, uint32_t value) {
+    panic("pci_config_write32: Not yet implemented!");
+}
+
+void pci_config_write64(PciDevice *dev, uint64_t value) {
+    panic("pci_config_write64: Not yet implemented!");
+}
+
+void pci_access_write8(PciDevice *dev, uint8_t bar_index, uint8_t value) {
+    panic("pci_access_write8: Not yet implemented!");
+}
+
+void pci_access_write16(PciDevice *dev, uint8_t bar_index, uint16_t value) {
+    panic("pci_access_write16: Not yet implemented!");
+}
+
+void pci_access_write32(PciDevice *dev, uint8_t bar_index, uint32_t value) {
+    panic("pci_access_write32: Not yet implemented!");
+}
+
+void pci_access_write64(PciDevice *dev, uint8_t bar_index, uint64_t value) {
+    panic("pci_access_write64: Not yet implemented!");
+}
