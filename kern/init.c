@@ -19,6 +19,8 @@
 #include <kern/kdebug.h>
 #include <kern/traceopt.h>
 
+#include <drivers/pci/pci.h>
+
 void
 timers_init(void) {
     timertab[0] = timer_rtc;
@@ -142,6 +144,8 @@ i386_init(void) {
 
     /* Lab 6 memory management initialization functions */
     init_memory();
+
+    pci_init();
 
     pic_init();
     timers_init();

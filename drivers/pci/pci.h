@@ -1,9 +1,11 @@
 #ifndef JOS_INC_PCI_H
 #define JOS_INC_PCI_H
 
-#include <stdbool.h>
-
 #include <inc/acpi_base.h>
+
+#define MAX_PCI_BUS_CNT 256
+#define MAX_PCI_FUNCTION_CNT 8
+#define MAX_PCI_DEVICE_CNT 32
 
 typedef struct {
     uint64_t base;
@@ -24,11 +26,49 @@ typedef struct {
     uint8_t next_capability_ptr;
 } PciCapabilityHdr;
 
+typedef struct PciBus PciBus;
+typedef struct PciDevice PciDevice;
+
+struct PciDevice {
+    uint8_t num;
+    uint8_t fun;
+
+    PciBus *parent_bus;
+
+    uint16_t vendor_id;
+    uint16_t device_id;
+
+    uint8_t base_class;
+    uint8_t sub_class;
+    uint8_t prog_if;
+
+    PciBus *child_bus;
+};
+
+struct PciBus {
+    uint8_t num;
+    PciBus *parent;
+
+    PciDevice devices[MAX_PCI_DEVICE_CNT];
+    size_t device_cnt;
+};
+
+#define PCI_VENDOR_ID        0x00
+#define PCI_DEVICE_ID        0x02
+#define PCI_PROG_IF          0x09
+#define PCI_HEADER_TYPE      0x0E
+#define PCI_CLASS            0x0B
+#define PCI_SUBCLASS         0x0A
+
+#define PCI_CLASS_BRIDGE     0x06
+#define PCI_SUBCLASS_PCI     0x04
+
+#define PCI_SECONDARY_BUS    0x19
+
 #define PCI_CAPABILITY_ID_VENDOR 0x09
 
-typedef void *PciDevice;
-
-bool pci_enumerate_devices();
+int pci_init();
+void pci_dump_tree();
 
 uint8_t pci_get_capability_pointer(PciDevice *dev);
 uint16_t pci_get_vid(PciDevice *dev);
