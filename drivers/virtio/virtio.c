@@ -8,11 +8,11 @@ virtio_check(PciDevice *dev, uint16_t *id) {
     uint16_t vid = pci_get_vid(dev);
     uint16_t did = pci_get_did(dev);
 
-    if (vid == VIRTIO_VENDOR_ID &&
-        did >= VIRTIO_DEVICE_ID_START &&
-        did <= VIRTIO_DEVICE_ID_END) {
+    if (vid == VIRTIO_PCI_VENDOR_ID &&
+        did >= VIRTIO_PCI_DEVICE_ID_START &&
+        did <= VIRTIO_PCI_DEVICE_ID_END) {
         if (id != NULL) {
-            *id = did - VIRTIO_DEVICE_ID_START;
+            *id = did - VIRTIO_PCI_DEVICE_ID_START;
         }
         return true;
     }

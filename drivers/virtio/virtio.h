@@ -8,11 +8,11 @@
 #include <inc/types.h>
 #include <drivers/pci/pci.h>
 
-#define VIRTIO_VENDOR_ID       0x1AF4
-#define VIRTIO_DEVICE_ID_START 0x0FFF
-#define VIRTIO_DEVICE_ID_END   0x1009
+#define VIRTIO_PCI_VENDOR_ID       0x1AF4
+#define VIRTIO_PCI_DEVICE_ID_START 0x0FFF
+#define VIRTIO_PCI_DEVICE_ID_END   0x1009
 
-#define VIRTIO_DEVICE_ID_NETWORK 0x1000
+#define VIRTIO_PCI_DEVICE_ID_NETWORK 0x1000
 
 //
 // VirtIo Device Specific Configuration Offsets
