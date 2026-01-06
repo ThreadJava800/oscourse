@@ -3,21 +3,18 @@
 #include <inc/error.h>
 #include <inc/stdio.h>
 
-bool
-virtio_check(PciDevice *dev, uint16_t *id) {
+static uint16_t
+virtio_check(PciDevice *dev) {
     uint16_t vid = pci_get_vid(dev);
     uint16_t did = pci_get_did(dev);
 
     if (vid == VIRTIO_PCI_VENDOR_ID &&
         did >= VIRTIO_PCI_DEVICE_ID_START &&
         did <= VIRTIO_PCI_DEVICE_ID_END) {
-        if (id != NULL) {
-            *id = did - VIRTIO_PCI_DEVICE_ID_START;
-        }
-        return true;
+        return did - VIRTIO_PCI_DEVICE_ID_START;
     }
 
-    return false;
+    return 0;
 }
 
 int
@@ -26,7 +23,9 @@ virtio_init(VirtioDevice *virtio_dev, PciDevice *pci_dev) {
     assert(pci_dev != NULL);
 
     *virtio_dev = (VirtioDevice){};
-    if (!virtio_check(pci_dev, &virtio_dev->id)) {
+
+    virtio_dev->id = virtio_check(pci_dev);
+    if (virtio_dev->id == 0) {
         cprintf("%s: PCI device %p isn't virtio device\n", __func__, pci_dev);
         return -E_UNSUPPORTED;
     }

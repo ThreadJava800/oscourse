@@ -145,7 +145,6 @@ DEF_VIRTIO_READ_FUN(64)
 
 #undef DEF_VIRTIO_READ_FUN
 
-bool virtio_check(PciDevice *dev, uint16_t *id);
 int virtio_init(VirtioDevice *virtio_dev, PciDevice *pci_dev);
 
 void virtio_set_queue(VirtioDevice *virtio_dev, Virtq *queue);
