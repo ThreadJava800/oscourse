@@ -38,8 +38,9 @@ KERN_SRCFILES := kern/acpi.c \
 			kern/uefiasm.S \
 			kern/spinlock.c \
 			drivers/pci/pci.c \
+			drivers/virtio/virtio_base.c \
+			drivers/virtio/virtio_net.c \
 			drivers/virtio/virtio.c \
-			driver/virtio/virtio_net.c
 
 ifeq ($(CONFIG_KSPACE),y)
 KERN_SRCFILES += kern/alloc.c

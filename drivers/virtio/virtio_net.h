@@ -5,7 +5,7 @@
 #ifndef JOS_DRIVERS_VIRTIO_VIRTIO_NET_H
 #define JOS_DRIVERS_VIRTIO_VIRTIO_NET_H
 
-#include <drivers/virtio/virtio.h>
+#include <drivers/virtio/virtio_base.h>
 #include <stdalign.h>
 
 #define VIRTIO_DEVICE_ID_NETWORK 1

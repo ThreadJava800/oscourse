@@ -1,4 +1,4 @@
-#include <drivers/virtio/virtio.h>
+#include <drivers/virtio/virtio_base.h>
 #include <inc/assert.h>
 #include <inc/error.h>
 #include <inc/stdio.h>
