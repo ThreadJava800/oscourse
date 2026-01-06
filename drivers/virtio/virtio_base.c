@@ -138,8 +138,8 @@ virtio_notify(VirtioDevice *virtio_dev, uint16_t id) {
 
 static int
 virtq_init(Virtq *virtq, uint16_t idx, void *buffer, size_t buffer_size, size_t queue_size) {
-    if ((uintptr_t)buffer != ((uintptr_t)buffer & VIRTQ_ALIGNMENT)) {
-        cprintf("%s: Invalid buffer alignment\n", __func__);
+    if ((uintptr_t)buffer != ((uintptr_t)buffer & ~(VIRTQ_ALIGNMENT - 1))) {
+        cprintf("%s: Invalid buffer %p alignment\n", __func__, buffer);
         return -E_INVAL;
     }
 
