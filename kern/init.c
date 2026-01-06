@@ -20,6 +20,7 @@
 #include <kern/traceopt.h>
 
 #include <drivers/pci/pci.h>
+#include <drivers/virtio/virtio.h>
 
 void
 timers_init(void) {
@@ -146,6 +147,7 @@ i386_init(void) {
     init_memory();
 
     pci_init();
+    virtio_module_init();
 
     pic_init();
     timers_init();

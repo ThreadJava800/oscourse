@@ -88,7 +88,7 @@ typedef struct {
 #define QUEUE_BUFFER_SIZE (2 * VIRTQ_ALIGNMENT)
 
 typedef struct {
-    VirtioDevice *virtio_dev;
+    VirtioDevice virtio_dev;
     VirtioNetConfig net_config;
     Virtq rx_virtq;
     Virtq tx_virtq;
@@ -98,6 +98,6 @@ typedef struct {
 
 #define REQUIRED_FEATURES (VIRTIO_NET_F_MAC | VIRTIO_NET_F_STATUS)
 
-int virtio_net_init(VirtioNetDevice *virtio_net_dev, VirtioDevice *virtio_dev);
+int virtio_net_init(VirtioNetDevice *virtio_net_dev, PciDevice *pci_dev);
 
 #endif // JOS_DRIVERS_VIRTIO_VIRTIO_NET_H

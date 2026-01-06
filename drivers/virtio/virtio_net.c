@@ -6,7 +6,7 @@ int
 virtio_net_setup_queues(VirtioNetDevice *virtio_net_dev) {
     assert(virtio_net_dev != NULL);
 
-    VirtioDevice *virtio_dev = virtio_net_dev->virtio_dev;
+    VirtioDevice *virtio_dev = &virtio_net_dev->virtio_dev;
 
     int err = virtio_setup_queue(
             virtio_dev,
@@ -34,15 +34,19 @@ virtio_net_setup_queues(VirtioNetDevice *virtio_net_dev) {
 }
 
 int
-virtio_net_init(VirtioNetDevice *virtio_net_dev, VirtioDevice *virtio_dev) {
-    assert(virtio_dev != NULL);
+virtio_net_init(VirtioNetDevice *virtio_net_dev, PciDevice *pci_dev) {
+    VirtioDevice *virtio_dev = &virtio_net_dev->virtio_dev;
+    int err = virtio_init(virtio_dev, pci_dev);
+    if (err != 0) {
+        cprintf("%s: Unable to init virtio device\n", __func__);
+        return err;
+    }
 
     if (virtio_dev->id != VIRTIO_DEVICE_ID_NETWORK) {
         cprintf("%s: Virtio device %p isn't virtio network card\n", __func__, virtio_dev);
         return -E_UNSUPPORTED;
     }
 
-    virtio_net_dev->virtio_dev = virtio_dev;
     virtio_reset(virtio_dev);
     virtio_set_status(virtio_dev, VSTAT_ACK | VSTAT_DRIVER);
 
@@ -66,7 +70,7 @@ virtio_net_init(VirtioNetDevice *virtio_net_dev, VirtioDevice *virtio_dev) {
             config->mac[0], config->mac[1], config->mac[2],
             config->mac[3], config->mac[4], config->mac[5]);
 
-    int err = virtio_net_setup_queues(virtio_net_dev);
+    err = virtio_net_setup_queues(virtio_net_dev);
     if (err != 0) {
         cprintf("%s: Unable to setup queues\n", __func__);
         return err;
