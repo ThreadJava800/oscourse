@@ -252,7 +252,7 @@ pci_enumerate_devices() {
         PCI_TRACE("There are multiple host controller in the system.\n");
 
         for (uint8_t fun = 0; fun < MAX_PCI_FUNCTION_CNT; ++fun) {
-            const uint8_t vendor_id = pci_config_read16_impl(0, 0, fun, PCI_VENDOR_ID);
+            const uint16_t vendor_id = pci_config_read16_impl(0, 0, fun, PCI_VENDOR_ID);
             if (vendor_id == 0xFFFF) {
                 PCI_TRACE("Device at bus = %02x does not exist! Continue searching\n", fun);
                 continue;
