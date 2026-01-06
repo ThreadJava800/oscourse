@@ -123,8 +123,8 @@ typedef struct {
     uint16_t id;
 } VirtioDevice;
 
-#define DEF_VIRTIO_WRITE_FUN(bitsize)              \
-    void virtio_write##bitsize(PciDevice *pci_dev, \
+#define DEF_VIRTIO_WRITE_FUN(bitsize)                    \
+    void virtio_write##bitsize(VirtioDevice *virtio_dev, \
                                uint8_t offset, uint##bitsize##_t value);
 
 DEF_VIRTIO_WRITE_FUN(8)
@@ -134,8 +134,8 @@ DEF_VIRTIO_WRITE_FUN(64)
 
 #undef DEF_VIRTIO_WRITE_FUN
 
-#define DEF_VIRTIO_READ_FUN(bitsize)                           \
-    uint##bitsize##_t virtio_read##bitsize(PciDevice *pci_dev, \
+#define DEF_VIRTIO_READ_FUN(bitsize)                                 \
+    uint##bitsize##_t virtio_read##bitsize(VirtioDevice *virtio_dev, \
                                            uint8_t offset);
 
 DEF_VIRTIO_READ_FUN(8)
