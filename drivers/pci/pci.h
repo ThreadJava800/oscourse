@@ -27,21 +27,15 @@ typedef struct {
     uint8_t capability_id;
     uint8_t next_capability_ptr;
 } PciCapabilityHdr;
+#pragma pack(pop)
 
 typedef struct PciBar PciBar;
 typedef struct PciBus PciBus;
 typedef struct PciDevice PciDevice;
 
-typedef enum {
-    PciBarNotPresent,
-    PciBarPMIO,
-    PciBarMMIO
-} PciBarType;
-
 struct PciBar {
     uint32_t base;
     uint32_t size;
-    PciBarType type;
 };
 
 struct PciDevice {
@@ -73,7 +67,6 @@ struct PciBus {
     PciDevice devices[MAX_PCI_DEVICE_CNT];
     size_t device_cnt;
 };
-#pragma pack(pop)
 
 #define PCI_VENDOR_ID        0x00
 #define PCI_DEVICE_ID        0x02
