@@ -147,8 +147,8 @@ DEF_VIRTIO_READ_FUN(64)
 
 int virtio_init(VirtioDevice *virtio_dev, PciDevice *pci_dev);
 
-void virtio_set_queue(VirtioDevice *virtio_dev, Virtq *queue);
-void virtio_select_queue(VirtioDevice *virtio_dev, uint16_t index);
+int virtio_set_queue(VirtioDevice *virtio_dev, Virtq *queue);
+int virtio_select_queue(VirtioDevice *virtio_dev, uint16_t index);
 uint16_t virtio_read_queue_size(VirtioDevice *virtio_dev);
 int virtio_setup_queue(VirtioDevice *virtio_dev, Virtq *virtq, uint16_t idx, void *buffer, size_t buffer_size);
 

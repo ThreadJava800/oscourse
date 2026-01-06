@@ -69,20 +69,34 @@ IMPL_VIRTIO_READ_FUN(64)
 
 #undef IMPL_VIRTIO_READ_FUN
 
-void
+int
 virtio_set_queue(VirtioDevice *virtio_dev, Virtq *queue) {
     assert(virtio_dev != NULL);
     uint64_t div_val = (uint64_t)queue->descriptor_table / VIRTQ_ALIGNMENT;
     assert(div_val < UINT32_MAX);
     virtio_write32(virtio_dev, VIRTIO_PCI_OFFSET_QUEUE_ADDRESS,
                    (uint32_t)div_val);
+    uint32_t read_val = virtio_read32(virtio_dev, VIRTIO_PCI_OFFSET_QUEUE_ADDRESS);
+    if (read_val != div_val) {
+        cprintf("%s: Queue address doesn't equal the given after set\n", __func__);
+        return -E_INVAL;
+    }
+
+    return 0;
 }
 
-void
+int
 virtio_select_queue(VirtioDevice *virtio_dev, uint16_t index) {
     assert(virtio_dev != NULL);
     virtio_write16(virtio_dev, VIRTIO_PCI_OFFSET_QUEUE_SELECT,
                    index);
+    uint16_t read_idx = virtio_read16(virtio_dev, VIRTIO_PCI_OFFSET_QUEUE_SELECT);
+    if (read_idx != index) {
+        cprintf("%s: Queue index doesn't equal the given after set\n", __func__);
+        return -E_INVAL;
+    }
+
+    return 0;
 }
 
 uint16_t
@@ -260,16 +274,21 @@ virtio_setup_queue(VirtioDevice *virtio_dev, Virtq *virtq, uint16_t idx, void *b
     assert(buffer != NULL);
     assert(buffer_size != 0);
 
-    virtio_select_queue(virtio_dev, idx);
-
-    uint16_t queue_size = virtio_read_queue_size(virtio_dev);
-    int err = virtq_init(virtq, idx, buffer, buffer_size, queue_size);
+    int err = virtio_select_queue(virtio_dev, idx);
     if (err != 0) {
-        cprintf("%s: Unable to initialize virtq structure\n", __func__);
         return err;
     }
 
-    virtio_set_queue(virtio_dev, buffer);
+    uint16_t queue_size = virtio_read_queue_size(virtio_dev);
+    err = virtq_init(virtq, idx, buffer, buffer_size, queue_size);
+    if (err != 0) {
+        return err;
+    }
+
+    err = virtio_set_queue(virtio_dev, buffer);
+    if (err != 0) {
+        return err;
+    }
 
     return 0;
 }
