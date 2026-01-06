@@ -52,7 +52,7 @@ virtio_net_init(VirtioNetDevice *virtio_net_dev, PciDevice *pci_dev) {
 
     uint32_t features = virtio_read_device_features(virtio_dev);
     features = features & REQUIRED_FEATURES;
-    if ((features & REQUIRED_FEATURES) != REQUIRED_FEATURES) {
+    if (features != REQUIRED_FEATURES) {
         cprintf("%s: Device doesn't accept required features\n", __func__);
         return -E_UNSUPPORTED;
     }
