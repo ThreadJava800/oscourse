@@ -104,17 +104,17 @@ typedef struct {
 //
 // virtio-0.9.5, 2.2.2.1 Device Status
 //
-#define VSTAT_ACK       BIT0
-#define VSTAT_DRIVER    BIT1
-#define VSTAT_DRIVER_OK BIT2
-#define VSTAT_FAILED    BIT7
+#define VSTAT_ACK       (1u << 0)
+#define VSTAT_DRIVER    (1u << 1)
+#define VSTAT_DRIVER_OK (1u << 2)
+#define VSTAT_FAILED    (1u << 7)
 
 //
 // virtio-0.9.5, Appendix B: Reserved (Device-Independent) Feature Bits
 //
-#define VIRTIO_F_NOTIFY_ON_EMPTY    BIT24
-#define VIRTIO_F_RING_INDIRECT_DESC BIT28
-#define VIRTIO_F_RING_EVENT_IDX     BIT29
+#define VIRTIO_F_NOTIFY_ON_EMPTY    (1u << 24)
+#define VIRTIO_F_RING_INDIRECT_DESC (1u << 28)
+#define VIRTIO_F_RING_EVENT_IDX     (1u << 29)
 
 typedef struct {
     PciDevice *pci_dev;
