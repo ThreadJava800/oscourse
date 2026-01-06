@@ -32,10 +32,6 @@ virtio_init(VirtioDevice *virtio_dev, PciDevice *pci_dev) {
     }
 
     virtio_dev->pci_dev = pci_dev;
-    if (pci_get_bar_type(pci_dev, VIRTIO_PCI_IO_BAR_INDEX) != PciBarPMIO) {
-        cprintf("%s: Only legacy devices are supported\n", __func__);
-        return -E_UNSUPPORTED;
-    }
 
     return 0;
 }

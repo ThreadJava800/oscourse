@@ -119,6 +119,4 @@ void pci_access_write16(PciDevice *dev, uint8_t bar_index, uint8_t offset, uint1
 void pci_access_write32(PciDevice *dev, uint8_t bar_index, uint8_t offset, uint32_t value);
 void pci_access_write64(PciDevice *dev, uint8_t bar_index, uint8_t offset, uint64_t value);
 
-PciBarType pci_get_bar_type(PciDevice *dev, uint8_t bar_index);
-
 #endif // JOS_INC_PCI_H
