@@ -13,7 +13,7 @@ ip tuntap add $TAP_NAME mode tap user $USER
 ip link set $TAP_NAME up
 
 # set ip address for this tap
-ip addr add $TAP_NAME/24 dev $TAP_NAME
+ip addr add $TAP_IP_ADDR/24 dev $TAP_NAME
 
 # use ifconfig if the previous line wouldn't work
 # ifconfig $TAP_NAME $TAP_IP_ADDR
