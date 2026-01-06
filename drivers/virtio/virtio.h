@@ -29,8 +29,6 @@
 #define VIRTIO_PCI_OFFSET_QUEUE_DEVICE_STATUS 0x12
 #define VIRTIO_PCI_OFFSET_QUEUE_DEVICE_ISR    0x13
 
-#define VIRTIO_PCI_DEVICE_STATUS_RESET_VAL 0
-
 #define VIRTIO_PCI_IO_BAR_INDEX 0
 
 /* This marks a buffer as continuing via the next field. */
@@ -92,9 +90,15 @@ typedef struct {
     VirtqDescriptor *descriptor_table;
     VirtqAvailable available_ring;
     VirtqUsed used_ring;
+
     uint16_t queue_size;
     void *buffer;
     size_t buffer_size;
+
+    uint16_t idx;
+    uint16_t cnt_free_desc;
+    uint16_t head_free_desc;
+    uint16_t last_seen_used_desc;
 } Virtq;
 
 //
@@ -133,5 +137,9 @@ void virtio_set_driver_features(VirtioDevice *virtio_dev, uint32_t features);
 uint8_t virtio_read_isr(VirtioDevice *virtio_dev);
 uint16_t virtio_read_notify(VirtioDevice *virtio_dev);
 void virtio_notify(VirtioDevice *virtio_dev, uint16_t id);
+
+typedef int (*recv_handler_t)(void *);
+int virtio_send_buffer(VirtioDevice *virtio_dev, Virtq *virtq, void *buffer, uint32_t length, bool is_writable);
+int virtio_recv_buffer(VirtioDevice *virtio_dev, Virtq *virtq, recv_handler_t handler);
 
 #endif // JOS_DRIVERS_VIRTIO_VIRTIO_H

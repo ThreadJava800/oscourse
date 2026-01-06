@@ -108,7 +108,7 @@ virtio_reset(VirtioDevice *virtio_dev) {
     assert(pci_dev != NULL);
 
     virtio_write8(pci_dev, VIRTIO_PCI_OFFSET_QUEUE_DEVICE_STATUS,
-                  VIRTIO_PCI_DEVICE_STATUS_RESET_VAL);
+                  0);
 }
 
 void
@@ -217,5 +217,75 @@ virtq_init(Virtq *virtq, void *buffer, size_t buffer_size, size_t queue_size) {
         return -E_INVAL;
     }
 
+    virtq->head_free_desc = 0;
+    virtq->cnt_free_desc = queue_size;
+    virtq->last_seen_used_desc = 0;
+
     return 0;
+}
+
+static
+int
+virtq_place_buffer(Virtq *virtq, void *buffer, uint32_t length, bool is_writable, uint16_t *head) {
+    assert(virtq != NULL);
+    assert(buffer != NULL);
+    assert(length != 0);
+    assert(head != NULL);
+
+    if (virtq->cnt_free_desc == 0) {
+        cprintf("%s: No free descriptors\n", __func__);
+        return -E_NO_MEM;
+    }
+
+    uint16_t free_desc = virtq->head_free_desc;
+    *head = free_desc;
+
+    virtq->descriptor_table[free_desc].address = (uint64_t)buffer;
+    virtq->descriptor_table[free_desc].length = length;
+    /* no support for chaining */
+    virtq->descriptor_table[free_desc].flags = is_writable ? VIRTQ_DESC_F_WRITE : 0;
+
+    virtq->head_free_desc = (free_desc + 1) % virtq->queue_size;
+    --virtq->cnt_free_desc;
+
+    return 0;
+}
+
+int
+virtio_send_buffer(VirtioDevice *virtio_dev, Virtq *virtq, void *buffer, uint32_t length, bool is_writable) {
+    assert(virtq != NULL);
+    assert(buffer != NULL);
+    assert(length != 0);
+
+    uint16_t head = 0;
+    int err = virtq_place_buffer(virtq, buffer, length, is_writable, &head);
+    if (err != 0) {
+        return err;
+    }
+
+    VirtqAvailable avail = virtq->available_ring;
+    avail.ring[*avail.idx % virtq->queue_size] = head;
+    ++(*avail.idx);
+
+    virtio_notify(virtio_dev, virtq->idx);
+    return 0;
+}
+
+int
+virtio_recv_buffer(VirtioDevice *virtio_dev, Virtq *virtq, recv_handler_t handler) {
+    assert(virtio_dev != NULL);
+    assert(virtq != NULL);
+
+    if (virtq->last_seen_used_desc == *virtq->used_ring.idx) {
+        return 0;
+    }
+
+    uint16_t ring_idx = virtq->last_seen_used_desc % virtq->queue_size;
+    VirtqUsedElem *used_elem = &virtq->used_ring.ring[ring_idx];
+    assert("Chaining is not supported" && used_elem->len == 1);
+
+    int res = handler((void *)virtq->descriptor_table[used_elem->id].address);
+    ++virtq->last_seen_used_desc;
+
+    return res;
 }
