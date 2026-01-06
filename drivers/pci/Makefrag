@@ -1,0 +1,8 @@
+DRIVERS_PCI_DIR := pci
+
+OBJDIRS += $(DRIVERS_PCI_DIR)
+
+$(OBJDIR)/$(DRIVERS_OBJ_DIR)/pci/%.o: $(DRIVERS_OBJ_DIR)/$(DRIVERS_PCI_DIR)/%.c $(DRIVERS_OBJ_DIR)/$(DRIVERS_PCI_DIR)/%.h
+	@echo + cc[DRIVERS/PCI] $<
+	@mkdir -p $(@D)
+	$(V)$(CC) $(USER_CFLAGS) -c -o $@ $<
