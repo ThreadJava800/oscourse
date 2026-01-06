@@ -62,6 +62,7 @@ virtio_net_init(VirtioNetDevice *virtio_net_dev, PciDevice *pci_dev) {
     uint8_t *raw_conf = (uint8_t *)&virtio_net_dev->net_config;
     for (size_t index = 0; index < sizeof(VirtioNetConfig); index++) {
         *raw_conf = virtio_read8(virtio_dev, VIRTIO_DEVICE_SPECIFIC_CONFIGURATION_OFFSET_PCI + index);
+        ++raw_conf;
     }
 
     VirtioNetConfig *config = &virtio_net_dev->net_config;
