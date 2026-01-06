@@ -32,7 +32,7 @@ virtio_init(VirtioDevice *virtio_dev, PciDevice *pci_dev) {
     }
 
     virtio_dev->pci_dev = pci_dev;
-    if (pci_get_bar_type(pci_dev, VIRTIO_PCI_BAR_INDEX) != PciBarPMIO) {
+    if (pci_get_bar_type(pci_dev, VIRTIO_PCI_IO_BAR_INDEX) != PciBarPMIO) {
         cprintf("%s: Only legacy devices are supported\n", __func__);
         return -E_UNSUPPORTED;
     }
@@ -44,14 +44,27 @@ virtio_init(VirtioDevice *virtio_dev, PciDevice *pci_dev) {
     void virtio_write##bitsize(PciDevice *pci_dev,                        \
                                uint8_t offset, uint##bitsize##_t value) { \
         assert(pci_dev != NULL);                                          \
-        pci_access_write##bitsize(pci_dev, VIRTIO_PCI_BAR_INDEX,          \
+        pci_access_write##bitsize(pci_dev, VIRTIO_PCI_IO_BAR_INDEX,       \
                                   offset, value);                         \
     }
 
-DEF_VIRTIO_WRITE_FUN(8);
-DEF_VIRTIO_WRITE_FUN(16);
-DEF_VIRTIO_WRITE_FUN(32);
-DEF_VIRTIO_WRITE_FUN(64);
+DEF_VIRTIO_WRITE_FUN(8)
+DEF_VIRTIO_WRITE_FUN(16)
+DEF_VIRTIO_WRITE_FUN(32)
+DEF_VIRTIO_WRITE_FUN(64)
+
+#define DEF_VIRTIO_READ_FUN(bitsize)                                      \
+    uint##bitsize##_t virtio_read##bitsize(PciDevice *pci_dev,            \
+                                           uint8_t offset) {              \
+        assert(pci_dev != NULL);                                          \
+        return pci_access_read##bitsize(pci_dev, VIRTIO_PCI_IO_BAR_INDEX, \
+                                        offset);                          \
+    }
+
+DEF_VIRTIO_READ_FUN(8)
+DEF_VIRTIO_READ_FUN(16)
+DEF_VIRTIO_READ_FUN(32)
+DEF_VIRTIO_READ_FUN(64)
 
 void
 virtio_set_queue(VirtioDevice *virtio_dev, Virtq *queue) {
@@ -60,8 +73,10 @@ virtio_set_queue(VirtioDevice *virtio_dev, Virtq *queue) {
     PciDevice *pci_dev = virtio_dev->pci_dev;
     assert(pci_dev != NULL);
 
-    virtio_write64(pci_dev, VIRTIO_PCI_OFFSET_QUEUE_ADDRESS,
-                   (uint64_t)queue->descriptor_table);
+    uint64_t div_val = (uint64_t)queue->descriptor_table / VIRTQ_ALIGNMENT;
+    assert(div_val < UINT32_MAX);
+    virtio_write32(pci_dev, VIRTIO_PCI_OFFSET_QUEUE_ADDRESS,
+                   (uint32_t)div_val);
 }
 
 void
@@ -73,6 +88,89 @@ virtio_select_queue(VirtioDevice *virtio_dev, uint16_t index) {
 
     virtio_write16(pci_dev, VIRTIO_PCI_OFFSET_QUEUE_SELECT,
                    index);
+}
+
+uint16_t
+virtio_read_queue_size(VirtioDevice *virtio_dev) {
+    assert(virtio_dev != NULL);
+
+    PciDevice *pci_dev = virtio_dev->pci_dev;
+    assert(pci_dev != NULL);
+
+    return virtio_read16(pci_dev, VIRTIO_PCI_OFFSET_QUEUE_SIZE);
+}
+
+void
+virtio_reset(VirtioDevice *virtio_dev) {
+    assert(virtio_dev != NULL);
+
+    PciDevice *pci_dev = virtio_dev->pci_dev;
+    assert(pci_dev != NULL);
+
+    virtio_write8(pci_dev, VIRTIO_PCI_OFFSET_QUEUE_DEVICE_STATUS,
+                  VIRTIO_PCI_DEVICE_STATUS_RESET_VAL);
+}
+
+void
+virtio_set_status(VirtioDevice *virtio_dev, uint8_t status) {
+    assert(virtio_dev != NULL);
+
+    PciDevice *pci_dev = virtio_dev->pci_dev;
+    assert(pci_dev != NULL);
+
+    virtio_write8(pci_dev, VIRTIO_PCI_OFFSET_QUEUE_DEVICE_STATUS,
+                  status);
+}
+
+uint32_t
+virtio_read_device_features(VirtioDevice *virtio_dev) {
+    assert(virtio_dev != NULL);
+
+    PciDevice *pci_dev = virtio_dev->pci_dev;
+    assert(pci_dev != NULL);
+
+    return virtio_read32(pci_dev, VIRTIO_PCI_OFFSET_DEVICE_FEATURES);
+}
+
+void
+virtio_set_driver_features(VirtioDevice *virtio_dev, uint32_t features) {
+    assert(virtio_dev != NULL);
+
+    PciDevice *pci_dev = virtio_dev->pci_dev;
+    assert(pci_dev != NULL);
+
+    virtio_write32(pci_dev, VIRTIO_PCI_OFFSET_GUEST_FEATURES,
+                   features);
+}
+
+uint8_t
+virtio_read_isr(VirtioDevice *virtio_dev) {
+    assert(virtio_dev != NULL);
+
+    PciDevice *pci_dev = virtio_dev->pci_dev;
+    assert(pci_dev != NULL);
+
+    return virtio_read8(pci_dev, VIRTIO_PCI_OFFSET_QUEUE_DEVICE_ISR);
+}
+
+uint16_t
+virtio_read_notify(VirtioDevice *virtio_dev) {
+    assert(virtio_dev != NULL);
+
+    PciDevice *pci_dev = virtio_dev->pci_dev;
+    assert(pci_dev != NULL);
+
+    return virtio_read16(pci_dev, VIRTIO_PCI_OFFSET_QUEUE_NOTIFY);
+}
+
+void
+virtio_notify(VirtioDevice *virtio_dev, uint16_t id) {
+    assert(virtio_dev != NULL);
+
+    PciDevice *pci_dev = virtio_dev->pci_dev;
+    assert(pci_dev != NULL);
+
+    virtio_write8(pci_dev, VIRTIO_PCI_OFFSET_QUEUE_NOTIFY, id);
 }
 
 int

@@ -29,7 +29,9 @@
 #define VIRTIO_PCI_OFFSET_QUEUE_DEVICE_STATUS 0x12
 #define VIRTIO_PCI_OFFSET_QUEUE_DEVICE_ISR    0x13
 
-#define VIRTIO_PCI_BAR_INDEX 0
+#define VIRTIO_PCI_DEVICE_STATUS_RESET_VAL 0
+
+#define VIRTIO_PCI_IO_BAR_INDEX 0
 
 /* This marks a buffer as continuing via the next field. */
 #define VIRTQ_DESC_F_NEXT 1
@@ -115,7 +117,21 @@ typedef struct {
     uint16_t id;
 } VirtioDevice;
 
-int
-virtq_init(Virtq *virtq, void *buffer, size_t buffer_size, size_t queue_size);
+bool virtio_check(PciDevice *dev, uint16_t *id);
+int virtio_init(VirtioDevice *virtio_dev, PciDevice *pci_dev);
+
+void virtio_set_queue(VirtioDevice *virtio_dev, Virtq *queue);
+void virtio_select_queue(VirtioDevice *virtio_dev, uint16_t index);
+uint16_t virtio_read_queue_size(VirtioDevice *virtio_dev);
+
+void virtio_reset(VirtioDevice *virtio_dev);
+void virtio_set_status(VirtioDevice *virtio_dev, uint8_t status);
+
+uint32_t virtio_read_device_features(VirtioDevice *virtio_dev);
+void virtio_set_driver_features(VirtioDevice *virtio_dev, uint32_t features);
+
+uint8_t virtio_read_isr(VirtioDevice *virtio_dev);
+uint16_t virtio_read_notify(VirtioDevice *virtio_dev);
+void virtio_notify(VirtioDevice *virtio_dev, uint16_t id);
 
 #endif // JOS_DRIVERS_VIRTIO_VIRTIO_H
