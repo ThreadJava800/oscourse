@@ -40,7 +40,7 @@ virtio_init(VirtioDevice *virtio_dev, PciDevice *pci_dev) {
     return 0;
 }
 
-#define DEF_VIRTIO_WRITE_FUN(bitsize)                                     \
+#define IMPL_VIRTIO_WRITE_FUN(bitsize)                                     \
     void virtio_write##bitsize(PciDevice *pci_dev,                        \
                                uint8_t offset, uint##bitsize##_t value) { \
         assert(pci_dev != NULL);                                          \
@@ -48,12 +48,14 @@ virtio_init(VirtioDevice *virtio_dev, PciDevice *pci_dev) {
                                   offset, value);                         \
     }
 
-DEF_VIRTIO_WRITE_FUN(8)
-DEF_VIRTIO_WRITE_FUN(16)
-DEF_VIRTIO_WRITE_FUN(32)
-DEF_VIRTIO_WRITE_FUN(64)
+IMPL_VIRTIO_WRITE_FUN(8)
+IMPL_VIRTIO_WRITE_FUN(16)
+IMPL_VIRTIO_WRITE_FUN(32)
+IMPL_VIRTIO_WRITE_FUN(64)
 
-#define DEF_VIRTIO_READ_FUN(bitsize)                                      \
+#undef IMPL_VIRTIO_WRITE_FUN
+
+#define IMPL_VIRTIO_READ_FUN(bitsize)                                      \
     uint##bitsize##_t virtio_read##bitsize(PciDevice *pci_dev,            \
                                            uint8_t offset) {              \
         assert(pci_dev != NULL);                                          \
@@ -61,10 +63,12 @@ DEF_VIRTIO_WRITE_FUN(64)
                                         offset);                          \
     }
 
-DEF_VIRTIO_READ_FUN(8)
-DEF_VIRTIO_READ_FUN(16)
-DEF_VIRTIO_READ_FUN(32)
-DEF_VIRTIO_READ_FUN(64)
+IMPL_VIRTIO_READ_FUN(8)
+IMPL_VIRTIO_READ_FUN(16)
+IMPL_VIRTIO_READ_FUN(32)
+IMPL_VIRTIO_READ_FUN(64)
+
+#undef IMPL_VIRTIO_READ_FUN
 
 void
 virtio_set_queue(VirtioDevice *virtio_dev, Virtq *queue) {
@@ -173,8 +177,9 @@ virtio_notify(VirtioDevice *virtio_dev, uint16_t id) {
     virtio_write8(pci_dev, VIRTIO_PCI_OFFSET_QUEUE_NOTIFY, id);
 }
 
+static
 int
-virtq_init(Virtq *virtq, void *buffer, size_t buffer_size, size_t queue_size) {
+virtq_init(Virtq *virtq, uint16_t idx, void *buffer, size_t buffer_size, size_t queue_size) {
     if ((uintptr_t)buffer != ((uintptr_t)buffer & VIRTQ_ALIGNMENT)) {
         cprintf("%s: Invalid buffer alignment\n", __func__);
         return -E_INVAL;
@@ -189,6 +194,7 @@ virtq_init(Virtq *virtq, void *buffer, size_t buffer_size, size_t queue_size) {
     virtq->buffer_size = buffer_size;
     virtq->descriptor_table = buffer;
     virtq->queue_size = queue_size;
+    virtq->idx = idx;
 
     size_t avail_offset = VIRTQ_DESC_ELEM_SIZE * queue_size;
     void *curr_ptr = buffer + avail_offset;
@@ -224,8 +230,7 @@ virtq_init(Virtq *virtq, void *buffer, size_t buffer_size, size_t queue_size) {
     return 0;
 }
 
-static
-int
+static int
 virtq_place_buffer(Virtq *virtq, void *buffer, uint32_t length, bool is_writable, uint16_t *head) {
     assert(virtq != NULL);
     assert(buffer != NULL);
@@ -288,4 +293,25 @@ virtio_recv_buffer(VirtioDevice *virtio_dev, Virtq *virtq, recv_handler_t handle
     ++virtq->last_seen_used_desc;
 
     return res;
+}
+
+int
+virtio_setup_queue(VirtioDevice *virtio_dev, Virtq *virtq, uint16_t idx, void *buffer, size_t buffer_size) {
+    assert(virtio_dev != NULL);
+    assert(virtq != NULL);
+    assert(buffer != NULL);
+    assert(buffer_size != 0);
+
+    virtio_select_queue(virtio_dev, idx);
+
+    uint16_t queue_size = virtio_read_queue_size(virtio_dev);
+    int err = virtq_init(virtq, idx, buffer, buffer_size, queue_size);
+    if (err != 0) {
+        cprintf("%s: Unable to initialize virtq structure\n", __func__);
+        return err;
+    }
+
+    virtio_set_queue(virtio_dev, buffer);
+
+    return 0;
 }

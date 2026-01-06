@@ -121,12 +121,35 @@ typedef struct {
     uint16_t id;
 } VirtioDevice;
 
+#define DEF_VIRTIO_WRITE_FUN(bitsize)              \
+    void virtio_write##bitsize(PciDevice *pci_dev, \
+                               uint8_t offset, uint##bitsize##_t value);
+
+DEF_VIRTIO_WRITE_FUN(8)
+DEF_VIRTIO_WRITE_FUN(16)
+DEF_VIRTIO_WRITE_FUN(32)
+DEF_VIRTIO_WRITE_FUN(64)
+
+#undef DEF_VIRTIO_WRITE_FUN
+
+#define DEF_VIRTIO_READ_FUN(bitsize)                           \
+    uint##bitsize##_t virtio_read##bitsize(PciDevice *pci_dev, \
+                                           uint8_t offset);
+
+DEF_VIRTIO_READ_FUN(8)
+DEF_VIRTIO_READ_FUN(16)
+DEF_VIRTIO_READ_FUN(32)
+DEF_VIRTIO_READ_FUN(64)
+
+#undef DEF_VIRTIO_READ_FUN
+
 bool virtio_check(PciDevice *dev, uint16_t *id);
 int virtio_init(VirtioDevice *virtio_dev, PciDevice *pci_dev);
 
 void virtio_set_queue(VirtioDevice *virtio_dev, Virtq *queue);
 void virtio_select_queue(VirtioDevice *virtio_dev, uint16_t index);
 uint16_t virtio_read_queue_size(VirtioDevice *virtio_dev);
+int virtio_setup_queue(VirtioDevice *virtio_dev, Virtq *virtq, uint16_t idx, void *buffer, size_t buffer_size);
 
 void virtio_reset(VirtioDevice *virtio_dev);
 void virtio_set_status(VirtioDevice *virtio_dev, uint8_t status);
