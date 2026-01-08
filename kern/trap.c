@@ -1,3 +1,4 @@
+#include <inc/error.h>
 #include <inc/mmu.h>
 #include <inc/x86.h>
 #include <inc/assert.h>
@@ -20,6 +21,9 @@ static struct Taskstate ts;
  * a saved trapframe and printing the current trapframe and print some
  * additional information in the latter case */
 static struct Trapframe *last_tf;
+
+// TODO: it can be done much nicer
+static dev_int_handler_t device_irq_handlers[256] = {0};
 
 /* Interrupt descriptor table  (Must be built at run time because
  * shifted function addresses can't be represented in relocation records) */
@@ -65,6 +69,8 @@ struct Pseudodesc gdt_pd = {sizeof(gdt) - 1, (unsigned long)gdt};
 
 extern void (*clock_thdlr)();
 extern void (*timer_thdlr)();
+extern void (*device1_thdlr)();
+extern void (*device2_thdlr)();
 
 extern struct Timer *timer_for_schedule;
 
@@ -103,6 +109,9 @@ void
 trap_init(void) {
     idt[IRQ_OFFSET + IRQ_CLOCK] = GATE(0, GD_KT, &clock_thdlr, 0);
     idt[IRQ_OFFSET + IRQ_TIMER] = GATE(0, GD_KT, &timer_thdlr, 0);
+
+    idt[IRQ_OFFSET + IRQ_DEVICE1] = GATE(0, GD_KT, &device1_thdlr, 0);
+    idt[IRQ_OFFSET + IRQ_DEVICE2] = GATE(0, GD_KT, &device2_thdlr, 0);
 
     /* Per-CPU setup */
     trap_init_percpu();
@@ -187,6 +196,23 @@ print_trapframe(struct Trapframe *tf) {
     cprintf("  ss   0x----%04x\n", tf->tf_ss);
 }
 
+int
+add_device_irq_handler(uint8_t irq, dev_int_handler_t handler) {
+    assert(handler);
+
+    // TODO: refactor
+    if (irq != IRQ_DEVICE1 && irq != IRQ_DEVICE2) {
+        cprintf("Device IRQ is out of range: irq = %d\n", irq);
+        return -E_INVAL;
+    }
+
+    device_irq_handlers[irq] = handler;
+    pic_irq_unmask(irq);
+
+    cprintf("Successfully set handler for device IRQ %d\n", irq);
+    return 0;
+}
+
 void
 print_regs(struct PushRegs *regs) {
     cprintf("  r15  0x%08lx\n", (unsigned long)regs->reg_r15);
@@ -222,6 +248,12 @@ trap_dispatch(struct Trapframe *tf) {
     case IRQ_OFFSET + IRQ_TIMER:
         timer_for_schedule->handle_interrupts();
         sched_yield();
+    case IRQ_OFFSET + IRQ_DEVICE1:
+    case IRQ_OFFSET + IRQ_DEVICE2:
+        if (device_irq_handlers[tf->tf_trapno - IRQ_OFFSET]) {
+            device_irq_handlers[tf->tf_trapno - IRQ_OFFSET]();
+            return;
+        }
     default:
         print_trapframe(tf);
         if (!(tf->tf_cs & 3))

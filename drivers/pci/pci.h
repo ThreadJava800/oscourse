@@ -53,7 +53,7 @@ struct PciDevice {
 
     uint8_t cap_ptr;
 
-    uint32_t irq_line;
+    uint8_t irq_line;
 
     PciBus *child_bus;
 
@@ -75,19 +75,26 @@ struct PciBus {
 #define PCI_CLASS            0x0B
 #define PCI_SUBCLASS         0x0A
 
-#define	PCI_INTERRUPT_REG    0x3C
-#define PCI_CAPLISTPTR_REG   0x34
-#define PCI_BAR_REG_START    0x10
+#define PCI_COMMAND_STATUS_REG  0x04
+#define	PCI_INTERRUPT_REG       0x3C
+#define PCI_CAPLISTPTR_REG      0x34
+#define PCI_BAR_REG_START       0x10
 
 #define PCI_CLASS_BRIDGE     0x06
 #define PCI_SUBCLASS_PCI     0x04
 
 #define PCI_SECONDARY_BUS    0x19
 
+#define	PCI_COMMAND_IO_ENABLE			0x1
+#define	PCI_COMMAND_MEM_ENABLE			0x2
+#define	PCI_COMMAND_MASTER_ENABLE		0x4
+
 int pci_init();
 void pci_dump_tree();
 PciDevice *find_pci_dev(const uint16_t vendor_id, const uint16_t device_id);
+void pci_dev_enable(PciDevice *dev);
 
+uint8_t pci_get_irq_line(PciDevice *dev);
 uint8_t pci_get_capability_pointer(PciDevice *dev);
 uint16_t pci_get_vid(PciDevice *dev);
 uint16_t pci_get_did(PciDevice *dev);

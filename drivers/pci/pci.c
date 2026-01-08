@@ -11,7 +11,7 @@
 #include "pci.h"
 
 #ifndef pci_need_trace
-#define pci_need_trace 0
+#define pci_need_trace 1
 #endif
 
 #ifdef pci_need_trace
@@ -163,13 +163,14 @@ pci_add_dev_node(PciBus *const bus, PciDevice *const dev) {
     dev->prog_if = pci_config_read8_impl(bus->num, dev->num, dev->fun, PCI_PROG_IF);
 
     dev->cap_ptr = pci_config_read32_impl(bus->num, dev->num, dev->fun, PCI_CAPLISTPTR_REG);
-    dev->irq_line = pci_config_read32_impl(bus->num, dev->num, dev->fun, PCI_INTERRUPT_REG);
+    dev->irq_line = pci_config_read8_impl(bus->num, dev->num, dev->fun, PCI_INTERRUPT_REG);
 
     PCI_TRACE(
-        "Enumerated pci device %02x:%02x.%1o of type %02x.%02x.%02x: vendor_id = %02x, device_id = %02x\n",
+        "Enumerated pci device %02x:%02x.%1o of type %02x.%02x.%02x: vendor_id = %02x, device_id = %02x, irq_line = %02x\n",
         bus->num, dev->num, dev->fun,
         dev->base_class, dev->sub_class, dev->prog_if,
-        dev->vendor_id, dev->device_id
+        dev->vendor_id, dev->device_id,
+        dev->irq_line
     );
 
     if (!pci_scan_dev_bars(bus, dev)) {
@@ -390,6 +391,20 @@ PciDevice *find_pci_dev(const uint16_t vendor_id, const uint16_t device_id) {
     }
 
     return NULL;
+}
+
+void pci_dev_enable(PciDevice *dev) {
+    assert(dev);
+
+    uint16_t cmd = pci_config_read16(dev, PCI_COMMAND_STATUS_REG);
+    cmd |= (PCI_COMMAND_IO_ENABLE | PCI_COMMAND_MEM_ENABLE | PCI_COMMAND_MASTER_ENABLE);
+    cmd &= ~(1 << 10);
+    pci_config_write16(dev, PCI_COMMAND_STATUS_REG, cmd);
+}
+
+uint8_t pci_get_irq_line(PciDevice *dev) {
+    assert(dev);
+    return dev->irq_line;
 }
 
 uint8_t pci_get_capability_pointer(PciDevice *dev) {

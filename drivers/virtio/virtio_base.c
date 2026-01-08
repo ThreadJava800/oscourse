@@ -3,6 +3,9 @@
 #include <inc/error.h>
 #include <inc/stdio.h>
 
+#define JOS_KERNEL
+#include <kern/pmap.h>
+
 static uint16_t
 virtio_check(PciDevice *dev) {
     uint16_t vid = pci_get_vid(dev);
@@ -72,7 +75,7 @@ IMPL_VIRTIO_READ_FUN(64)
 int
 virtio_set_queue(VirtioDevice *virtio_dev, Virtq *queue) {
     assert(virtio_dev != NULL);
-    uint64_t div_val = (uint64_t)queue->descriptor_table / VIRTQ_ALIGNMENT;
+    uint64_t div_val = (uint64_t)PADDR(queue->descriptor_table) / VIRTQ_ALIGNMENT;
     assert(div_val < UINT32_MAX);
     virtio_write32(virtio_dev, VIRTIO_PCI_OFFSET_QUEUE_ADDRESS,
                    (uint32_t)div_val);
@@ -119,6 +122,12 @@ virtio_set_status(VirtioDevice *virtio_dev, uint8_t status) {
                   status);
 }
 
+uint8_t
+virtio_read_status(VirtioDevice *virtio_dev) {
+    assert(virtio_dev);
+    return virtio_read8(virtio_dev, VIRTIO_PCI_OFFSET_QUEUE_DEVICE_STATUS);
+}
+
 uint32_t
 virtio_read_device_features(VirtioDevice *virtio_dev) {
     assert(virtio_dev != NULL);
@@ -130,6 +139,12 @@ virtio_set_driver_features(VirtioDevice *virtio_dev, uint32_t features) {
     assert(virtio_dev != NULL);
     virtio_write32(virtio_dev, VIRTIO_PCI_OFFSET_GUEST_FEATURES,
                    features);
+}
+
+uint8_t
+virtio_get_irq_line(VirtioDevice *virtio_dev) {
+    assert(virtio_dev);
+    return pci_get_irq_line(virtio_dev->pci_dev);
 }
 
 uint8_t
@@ -147,7 +162,7 @@ virtio_read_notify(VirtioDevice *virtio_dev) {
 void
 virtio_notify(VirtioDevice *virtio_dev, uint16_t id) {
     assert(virtio_dev != NULL);
-    virtio_write8(virtio_dev, VIRTIO_PCI_OFFSET_QUEUE_NOTIFY, id);
+    virtio_write16(virtio_dev, VIRTIO_PCI_OFFSET_QUEUE_NOTIFY, id);
 }
 
 static int
@@ -174,11 +189,11 @@ virtq_init(Virtq *virtq, uint16_t idx, void *buffer, size_t buffer_size, size_t 
     virtq->available_ring.idx = curr_ptr + VIRTQ_AVAIL_IDX_OFFSET;
     virtq->available_ring.ring = curr_ptr + VIRTQ_AVAIL_RING_OFFSET;
 
-    curr_ptr = buffer + avail_offset + VIRTQ_AVAIL_EVENT_OFFSET(queue_size);
-    virtq->available_ring.idx = curr_ptr;
+    // curr_ptr = buffer + avail_offset + VIRTQ_AVAIL_EVENT_OFFSET(queue_size);
+    // virtq->available_ring.idx = curr_ptr;
 
     size_t used_offset = avail_offset + VIRTQ_AVAIL_END_OFFSET(queue_size);
-    used_offset = (used_offset + VIRTQ_ALIGNMENT) & VIRTQ_ALIGNMENT;
+    used_offset = (used_offset + VIRTQ_ALIGNMENT - 1) & ~(VIRTQ_ALIGNMENT - 1);
 
     curr_ptr = buffer + used_offset;
     virtq->used_ring.flags = curr_ptr + VIRTQ_USED_FLAGS_OFFSET;
@@ -198,6 +213,12 @@ virtq_init(Virtq *virtq, uint16_t idx, void *buffer, size_t buffer_size, size_t 
     virtq->head_free_desc = 0;
     virtq->cnt_free_desc = queue_size;
     virtq->last_seen_used_desc = 0;
+
+    *virtq->available_ring.flags = 0;
+    *virtq->available_ring.idx = 0;
+
+    *virtq->used_ring.flags = 0;
+    *virtq->used_ring.idx = 0;
 
     return 0;
 }
@@ -285,10 +306,15 @@ virtio_setup_queue(VirtioDevice *virtio_dev, Virtq *virtq, uint16_t idx, void *b
         return err;
     }
 
-    err = virtio_set_queue(virtio_dev, buffer);
+    err = virtio_set_queue(virtio_dev, virtq);
     if (err != 0) {
         return err;
     }
 
     return 0;
+}
+
+void virtio_enable_interrupts(Virtq *virtq) {
+    assert(virtq);
+    *(virtq->available_ring.flags) &= ~VIRTQ_AVAIL_F_NO_INTERRUPT;
 }

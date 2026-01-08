@@ -15,10 +15,13 @@ extern struct Pseudodesc idt_pd;
 
 extern bool in_page_fault;
 
+typedef void (*dev_int_handler_t)(void);
+
 void clock_idt_init(void);
 void trap_init(void);
 void trap_init_percpu(void);
 void print_regs(struct PushRegs *regs);
 void print_trapframe(struct Trapframe *tf);
+int add_device_irq_handler(uint8_t irq, dev_int_handler_t handler);
 
 #endif /* JOS_KERN_TRAP_H */
