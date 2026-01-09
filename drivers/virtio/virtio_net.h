@@ -100,11 +100,4 @@ typedef struct {
 
 int virtio_net_init(VirtioNetDevice *virtio_net_dev, PciDevice *pci_dev);
 
-uint8_t get_virtio_net_irq_line(VirtioNetDevice *virtio_net_dev);
-uint8_t read_virtio_net_isr(VirtioNetDevice *virtio_net_dev);
-
-void virtio_net_handle_rx(VirtioNetDevice *virtio_net_dev);
-void virtio_net_handle_tx(VirtioNetDevice *virtio_net_dev);
-void virtio_net_handle_config(VirtioNetDevice *virtio_net_dev);
-
 #endif // JOS_DRIVERS_VIRTIO_VIRTIO_NET_H

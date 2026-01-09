@@ -11,7 +11,7 @@
 #include "pci.h"
 
 #ifndef pci_need_trace
-#define pci_need_trace 1
+#define pci_need_trace 0
 #endif
 
 #ifdef pci_need_trace

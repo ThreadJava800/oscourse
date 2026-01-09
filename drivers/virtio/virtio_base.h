@@ -167,7 +167,7 @@ uint8_t virtio_read_isr(VirtioDevice *virtio_dev);
 uint16_t virtio_read_notify(VirtioDevice *virtio_dev);
 void virtio_notify(VirtioDevice *virtio_dev, uint16_t id);
 
-typedef int (*recv_handler_t)(void *);
+typedef int (*recv_handler_t)(void *, const size_t);
 int virtio_send_buffer(VirtioDevice *virtio_dev, Virtq *virtq, void *buffer, uint32_t length, bool is_writable);
 int virtio_recv_buffer(VirtioDevice *virtio_dev, Virtq *virtq, recv_handler_t handler);
 

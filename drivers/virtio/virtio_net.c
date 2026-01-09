@@ -5,12 +5,7 @@
 #define JOS_KERNEL
 #include <kern/pmap.h>
 
-static uint8_t test_buf[PAGE_SIZE];
-
-static inline void memory_barrier() {
-    asm volatile("mfence" ::: "memory");
-}
-
+static uint8_t rx_descr_buf[PAGE_SIZE];
 
 int
 virtio_net_setup_queues(VirtioNetDevice *virtio_net_dev) {
@@ -47,8 +42,8 @@ static void
 fill_rx_descriptors(VirtioNetDevice *virtio_net_dev) {
     assert(virtio_net_dev);
 
-    virtio_net_dev->rx_virtq.descriptor_table[0].address = (uint64_t)PADDR(test_buf);
-    virtio_net_dev->rx_virtq.descriptor_table[0].length = PAGE_SIZE;
+    virtio_net_dev->rx_virtq.descriptor_table[0].address = (uint64_t)PADDR(rx_descr_buf);
+    virtio_net_dev->rx_virtq.descriptor_table[0].length = sizeof(rx_descr_buf);
     virtio_net_dev->rx_virtq.descriptor_table[0].flags = VIRTQ_DESC_F_WRITE;
     virtio_net_dev->rx_virtq.descriptor_table[0].next = 0;
 
@@ -131,61 +126,10 @@ read_virtio_net_isr(VirtioNetDevice *virtio_net_dev) {
 }
 
 void
-virtio_net_handle_rx(VirtioNetDevice *virtio_net_dev) {
+virtio_net_handle_rx(VirtioNetDevice *virtio_net_dev, recv_handler_t handler) {
     assert(virtio_net_dev);
-
-    Virtq *rx_queue = &virtio_net_dev->rx_virtq;
-    VirtqUsed *used_ring = &rx_queue->used_ring;
-    VirtqAvailable *avail_ring = &rx_queue->available_ring;
-
-    const uint16_t queue_size = virtio_net_dev->rx_virtq.queue_size;
-    uint16_t rx_last_used = rx_queue->last_seen_used_desc;
-
-    memory_barrier();
-    uint16_t current_idx = *used_ring->idx;
-    memory_barrier();
-
-    while (rx_last_used != current_idx) {
-        VirtqUsedElem *elem = &used_ring->ring[rx_last_used % queue_size];
-
-        const uint32_t desc_id = elem->id;
-        if (desc_id >= queue_size) {
-            cprintf("Descriptor ID exeeds queue size: %u\n", desc_id);
-            break;
-        }
-
-        VirtqDescriptor *descr = &rx_queue->descriptor_table[desc_id];
-        if (descr->flags & VIRTQ_DESC_F_NEXT) {
-            cprintf("virtio-net driver does not support chaining!\n");
-            break;
-        }
-
-        if (elem->len < sizeof(VirtioNetReq) || elem->len > descr->length) {
-            cprintf("Packet len is out of bounds: %u\n", elem->len);
-            continue;
-        }
-
-        VirtioNetReq *hdr = (VirtioNetReq*)descr->address;
-        uint8_t *packet = (uint8_t*)(hdr + 1);
-        uint32_t packet_len = elem->len - sizeof(VirtioNetReq);
-
-        cprintf("Recieved packet:\n");
-        for (uint32_t i = 0; i < packet_len; ++i) {
-            cprintf("%c ", packet[i]);
-        }
-        cprintf("\n");
-
-        avail_ring->ring[*avail_ring->idx % queue_size] = desc_id;
-    
-        memory_barrier();
-        *avail_ring->idx += 1;
-        memory_barrier();
-
-        rx_last_used += 1;
-    }
-
-    rx_queue->last_seen_used_desc = rx_last_used;
-    virtio_notify(&virtio_net_dev->virtio_dev, VIRTIO_NET_Q_RX);
+    assert(handler);
+    virtio_recv_buffer(&virtio_net_dev->virtio_dev, &virtio_net_dev->rx_virtq, handler);
 }
 
 static void virtio_free_queue_desc(Virtq *virtq, uint16_t desc_id) {
@@ -199,47 +143,4 @@ static void virtio_free_queue_desc(Virtq *virtq, uint16_t desc_id) {
     virtq->head_free_desc = desc_id;
 
     virtq->cnt_free_desc += 1;
-}
-
-void
-virtio_net_handle_tx(VirtioNetDevice *virtio_net_dev) {
-    assert(virtio_net_dev);
-
-    Virtq *tx_queue = &virtio_net_dev->tx_virtq;
-    VirtqUsed *used_ring = &tx_queue->used_ring;
-
-    const uint16_t queue_size = virtio_net_dev->tx_virtq.queue_size;
-    uint16_t tx_last_used = tx_queue->last_seen_used_desc;
-
-    memory_barrier();
-    uint16_t current_idx = *used_ring->idx;
-    memory_barrier();
-
-    while (tx_last_used != current_idx) {
-        VirtqUsedElem *used_elem = &used_ring->ring[tx_last_used % queue_size];
-
-        uint16_t desc_id = used_elem->id;
-        if (desc_id > queue_size) {
-            cprintf("Descriptor ID exeeds queue size: %u\n", desc_id);
-            break;
-        }
-
-        VirtqDescriptor *descr = &tx_queue->descriptor_table[desc_id];
-        if (descr->flags & VIRTQ_DESC_F_NEXT) {
-            cprintf("virtio-net driver does not support chaining!\n");
-            break;
-        }
-
-        cprintf("TX completed\n");
-        virtio_free_queue_desc(&virtio_net_dev->tx_virtq, desc_id);
-
-        tx_last_used += 1;
-    }
-
-    tx_queue->last_seen_used_desc = tx_last_used;
-}
-
-void
-virtio_net_handle_config(VirtioNetDevice *virtio_net_dev) {
-    panic("%s: is not yet implemented\n", __func__);
 }
