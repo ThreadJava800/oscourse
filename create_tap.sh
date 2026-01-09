@@ -18,3 +18,6 @@ ip addr add $TAP_IP_ADDR/24 dev $TAP_NAME
 # use ifconfig if the previous line wouldn't work
 # ifconfig $TAP_NAME $TAP_IP_ADDR
 
+ip route add local $TAP_IP_ADDR dev $TAP_NAME table main
+ip route del local $TAP_IP_ADDR dev $TAP_NAME table local
+ip route add $TAP_IP_ADDR dev $TAP_NAME table local
