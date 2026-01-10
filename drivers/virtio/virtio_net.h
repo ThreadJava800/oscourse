@@ -85,7 +85,7 @@ typedef struct {
 #define VIRTIO_NET_S_LINK_UP  (1u << 0)
 #define VIRTIO_NET_S_ANNOUNCE (1u << 1)
 
-#define QUEUE_BUFFER_SIZE (2 * VIRTQ_ALIGNMENT)
+#define QUEUE_BUFFER_SIZE (4 * VIRTQ_ALIGNMENT)
 
 typedef struct {
     VirtioDevice virtio_dev;
@@ -96,7 +96,7 @@ typedef struct {
     alignas(VIRTQ_ALIGNMENT) uint8_t tx_buffer[QUEUE_BUFFER_SIZE];
 } VirtioNetDevice;
 
-#define REQUIRED_FEATURES (VIRTIO_NET_F_MAC | VIRTIO_NET_F_STATUS)
+#define REQUIRED_FEATURES (VIRTIO_NET_F_CSUM | VIRTIO_NET_F_MAC | VIRTIO_NET_F_STATUS)
 
 int virtio_net_init(VirtioNetDevice *virtio_net_dev, PciDevice *pci_dev);
 

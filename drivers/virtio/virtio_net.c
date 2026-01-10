@@ -2,6 +2,11 @@
 #include <inc/assert.h>
 #include <inc/error.h>
 
+#define JOS_KERNEL
+#include <kern/pmap.h>
+
+static uint8_t rx_descr_buf[PAGE_SIZE];
+
 int
 virtio_net_setup_queues(VirtioNetDevice *virtio_net_dev) {
     assert(virtio_net_dev != NULL);
@@ -33,6 +38,22 @@ virtio_net_setup_queues(VirtioNetDevice *virtio_net_dev) {
     return 0;
 }
 
+static void 
+fill_rx_descriptors(VirtioNetDevice *virtio_net_dev) {
+    assert(virtio_net_dev);
+
+    virtio_net_dev->rx_virtq.descriptor_table[0].address = (uint64_t)PADDR(rx_descr_buf);
+    virtio_net_dev->rx_virtq.descriptor_table[0].length = sizeof(rx_descr_buf);
+    virtio_net_dev->rx_virtq.descriptor_table[0].flags = VIRTQ_DESC_F_WRITE;
+    virtio_net_dev->rx_virtq.descriptor_table[0].next = 0;
+
+    virtio_net_dev->rx_virtq.available_ring.ring[0] = 0;
+    *virtio_net_dev->rx_virtq.available_ring.idx = 1;
+    *virtio_net_dev->rx_virtq.available_ring.flags = 0;
+
+    virtio_notify(&virtio_net_dev->virtio_dev, VIRTIO_NET_Q_RX);
+}
+
 int
 virtio_net_init(VirtioNetDevice *virtio_net_dev, PciDevice *pci_dev) {
     VirtioDevice *virtio_dev = &virtio_net_dev->virtio_dev;
@@ -47,7 +68,10 @@ virtio_net_init(VirtioNetDevice *virtio_net_dev, PciDevice *pci_dev) {
         return -E_UNSUPPORTED;
     }
 
+    pci_dev_enable(pci_dev);
+
     virtio_reset(virtio_dev);
+    virtio_set_status(virtio_dev, VSTAT_ACK);
     virtio_set_status(virtio_dev, VSTAT_ACK | VSTAT_DRIVER);
 
     uint32_t features = virtio_read_device_features(virtio_dev);
@@ -58,6 +82,12 @@ virtio_net_init(VirtioNetDevice *virtio_net_dev, PciDevice *pci_dev) {
     }
 
     virtio_set_driver_features(virtio_dev, features);
+
+    virtio_set_status(virtio_dev, VSTAT_ACK | VSTAT_DRIVER | VSTAT_FEATURES_OK);
+    if ((virtio_read_status(virtio_dev) & VSTAT_FEATURES_OK) == 0) {
+        cprintf("virtio_net: features were not accepted!\n");
+        return -E_UNSUPPORTED;
+    }
 
     uint8_t *raw_conf = (uint8_t *)&virtio_net_dev->net_config;
     for (size_t index = 0; index < sizeof(VirtioNetConfig); index++) {
@@ -77,7 +107,40 @@ virtio_net_init(VirtioNetDevice *virtio_net_dev, PciDevice *pci_dev) {
         return err;
     }
 
-    virtio_set_status(virtio_dev, VSTAT_ACK | VSTAT_DRIVER | VSTAT_DRIVER_OK);
+    virtio_set_status(virtio_dev, VSTAT_ACK | VSTAT_DRIVER | VSTAT_FEATURES_OK | VSTAT_DRIVER_OK);
 
+    fill_rx_descriptors(virtio_net_dev);
     return 0;
+}
+
+uint8_t
+get_virtio_net_irq_line(VirtioNetDevice *virtio_net_dev) {
+    assert(virtio_net_dev);
+    return virtio_get_irq_line(&virtio_net_dev->virtio_dev);
+}
+
+uint8_t
+read_virtio_net_isr(VirtioNetDevice *virtio_net_dev) {
+    assert(virtio_net_dev);
+    return virtio_read_isr(&virtio_net_dev->virtio_dev);
+}
+
+void
+virtio_net_handle_rx(VirtioNetDevice *virtio_net_dev, recv_handler_t handler) {
+    assert(virtio_net_dev);
+    assert(handler);
+    virtio_recv_buffer(&virtio_net_dev->virtio_dev, &virtio_net_dev->rx_virtq, handler);
+}
+
+static void virtio_free_queue_desc(Virtq *virtq, uint16_t desc_id) {
+    assert(virtq);
+
+    virtq->descriptor_table[desc_id].address = 0;
+    virtq->descriptor_table[desc_id].length = 0;
+    virtq->descriptor_table[desc_id].flags = 0;
+
+    virtq->descriptor_table[desc_id].next = virtq->head_free_desc;
+    virtq->head_free_desc = desc_id;
+
+    virtq->cnt_free_desc += 1;
 }

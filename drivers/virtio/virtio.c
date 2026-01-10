@@ -20,3 +20,7 @@ virtio_module_init() {
 
     return 0;
 }
+
+VirtioNetDevice *get_virtio_net_dev() {
+    return &global_nic;
+}

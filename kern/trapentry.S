@@ -27,4 +27,23 @@ timer_thdlr:
     call trap
     jmp .
 
+# TODO: create a macro for IRQ handlers
+.globl device1_thdlr
+.type device1_thdlr, @function
+device1_thdlr:
+    call save_trapframe_trap
+    # Set trap code for trapframe
+    movl $(IRQ_OFFSET + IRQ_DEVICE1), 136(%rsp)
+    call trap
+    jmp .
+
+.globl device2_thdlr
+.type device2_thdlr, @function
+device2_thdlr:
+    call save_trapframe_trap
+    # Set trap code for trapframe
+    movl $(IRQ_OFFSET + IRQ_DEVICE2), 136(%rsp)
+    call trap
+    jmp .
+
 #endif

@@ -22,8 +22,10 @@ KERN_SRCFILES := kern/acpi.c \
 			kern/pmap.c \
 			kern/env.c \
 			kern/kclock.c \
+			kern/net.c \
 			kern/picirq.c \
 			kern/printf.c \
+			kern/ringbuf.c \
 			kern/trap.c \
 			kern/trapentry.S \
 			kern/timer.c \

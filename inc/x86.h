@@ -280,4 +280,14 @@ nmi_disable(void) {
     outb(CMOS_CMD, inb(CMOS_CMD) | CMOS_NMI_LOCK);
 }
 
+static inline void __attribute__((always_inline))
+memory_fence(void) {
+    asm volatile("mfence" ::: "memory");
+}
+
+static inline void __attribute__((always_inline))
+cpu_pause(void) {
+    asm volatile("pause");
+}
+
 #endif /* !JOS_INC_X86_H */

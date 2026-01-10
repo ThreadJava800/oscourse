@@ -33,6 +33,8 @@
 
 #define VIRTIO_PCI_IO_BAR_INDEX 0
 
+#define VIRTIO_PCI_ISR_NOTIFY 0x1
+
 /* This marks a buffer as continuing via the next field. */
 #define VIRTQ_DESC_F_NEXT 1
 /* This marks a buffer as device write-only (otherwise device read-only). */
@@ -106,10 +108,11 @@ typedef struct {
 //
 // virtio-0.9.5, 2.2.2.1 Device Status
 //
-#define VSTAT_ACK       (1u << 0)
-#define VSTAT_DRIVER    (1u << 1)
-#define VSTAT_DRIVER_OK (1u << 2)
-#define VSTAT_FAILED    (1u << 7)
+#define VSTAT_ACK           (1u << 0)
+#define VSTAT_DRIVER        (1u << 1)
+#define VSTAT_DRIVER_OK     (1u << 2)
+#define VSTAT_FEATURES_OK   (1u << 3)
+#define VSTAT_FAILED        (1u << 7)
 
 //
 // virtio-0.9.5, Appendix B: Reserved (Device-Independent) Feature Bits
@@ -154,16 +157,20 @@ int virtio_setup_queue(VirtioDevice *virtio_dev, Virtq *virtq, uint16_t idx, voi
 
 void virtio_reset(VirtioDevice *virtio_dev);
 void virtio_set_status(VirtioDevice *virtio_dev, uint8_t status);
+uint8_t virtio_read_status(VirtioDevice *virtio_dev);
 
 uint32_t virtio_read_device_features(VirtioDevice *virtio_dev);
 void virtio_set_driver_features(VirtioDevice *virtio_dev, uint32_t features);
 
+uint8_t virtio_get_irq_line(VirtioDevice *virtio_dev);
 uint8_t virtio_read_isr(VirtioDevice *virtio_dev);
 uint16_t virtio_read_notify(VirtioDevice *virtio_dev);
 void virtio_notify(VirtioDevice *virtio_dev, uint16_t id);
 
-typedef int (*recv_handler_t)(void *);
+typedef int (*recv_handler_t)(void *, const size_t);
 int virtio_send_buffer(VirtioDevice *virtio_dev, Virtq *virtq, void *buffer, uint32_t length, bool is_writable);
 int virtio_recv_buffer(VirtioDevice *virtio_dev, Virtq *virtq, recv_handler_t handler);
+
+void virtio_enable_interrupts(Virtq *virtq);
 
 #endif // JOS_DRIVERS_VIRTIO_VIRTIO_BASE_H
