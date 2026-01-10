@@ -283,6 +283,8 @@ virtio_recv_buffer(VirtioDevice *virtio_dev, Virtq *virtq, recv_handler_t handle
     }
 
     VirtqAvailable *const avail_ring = &virtq->available_ring;
+
+    int res = 0;
     while (virtq->last_seen_used_desc != done_idx) {
         const uint16_t used_ring_idx = virtq->last_seen_used_desc % virtq->queue_size;
 
@@ -298,9 +300,9 @@ virtio_recv_buffer(VirtioDevice *virtio_dev, Virtq *virtq, recv_handler_t handle
         const uint32_t msg_len = used_elem->len;
         assert("virtio: message len is out of bounds" && msg_len < desc->length);
 
-        int res = handler((void *)virtq->descriptor_table[used_elem->id].address, msg_len);
-        if (res != 0) {
-            return res;
+        if (res == 0) {
+            // if handler once failed, assume it won't be able to proceed next messages
+            res = handler((void *)virtq->descriptor_table[used_elem->id].address, msg_len);
         }
 
         const uint16_t avail_ring_idx = *avail_ring->idx;
@@ -314,8 +316,15 @@ virtio_recv_buffer(VirtioDevice *virtio_dev, Virtq *virtq, recv_handler_t handle
         ++virtq->last_seen_used_desc;
     }
 
+    if (res != 0) {
+        cprintf(
+            "virtio: part of message was dropped! Recv handler was not able to proceed all the data with err = %d\n",
+            res
+        );
+    }
+
     virtio_notify(virtio_dev, virtq->idx);
-    return 0;
+    return res;
 }
 
 int
