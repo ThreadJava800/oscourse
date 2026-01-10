@@ -51,9 +51,9 @@ rb_write(Ringbuf *const rb, const uint8_t *const src, const size_t src_size) {
 
     const size_t chunk = rb->capacity - (rb->head % rb->capacity);
     if (chunk >= src_size) {
-        memcpy(rb->buffer + rb->head, src, src_size);
+        memcpy(rb->buffer + (rb->head % rb->capacity), src, src_size);
     } else {
-        memcpy(rb->buffer + rb->head, src, chunk);
+        memcpy(rb->buffer + (rb->head % rb->capacity), src, chunk);
         memcpy(rb->buffer, src + chunk, src_size - chunk);
     }
 
@@ -90,11 +90,11 @@ rb_read(Ringbuf *const rb, uint8_t *const dst, size_t *size) {
 
     const size_t copy_size = MIN(*size, busy_len);
 
-    const size_t chunk = rb->capacity - rb->tail;
+    const size_t chunk = rb->capacity - (rb->tail % rb->capacity);
     if (chunk >= copy_size) {
-        memcpy(dst, rb->buffer + rb->tail, copy_size);
+        memcpy(dst, rb->buffer + (rb->tail % rb->capacity), copy_size);
     } else {
-        memcpy(dst, rb->buffer + rb->tail, chunk);
+        memcpy(dst, rb->buffer + (rb->tail % rb->capacity), chunk);
         memcpy(dst + chunk, rb->buffer, copy_size - chunk);
     }
 
