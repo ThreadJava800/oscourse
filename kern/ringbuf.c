@@ -4,7 +4,7 @@
 #include <inc/string.h>
 
 int
-rb_init(Ringbuf *const rb, uint8_t *const storage, const size_t capacity, const int allow_overflow) {
+rb_init(Ringbuf *const rb, uint8_t *const storage, const size_t capacity, const bool allow_overflow) {
     if (!rb) {
         cprintf("ringbuf: invalid ringbuf ptr was provided!\n");
         return -E_INVAL;

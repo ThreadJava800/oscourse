@@ -18,7 +18,7 @@ static uint8_t virtio_net_irq_line = 0;
 static uint8_t net_recv_data_buf[4 * PAGE_SIZE];
 static Ringbuf net_recv_data_rb;
 
-static int net_data_received = 0;
+static bool net_data_received = 0;
 
 static int net_recv_handler(void *buf, const size_t len) {
     assert(buf);
@@ -37,7 +37,7 @@ static int net_recv_handler(void *buf, const size_t len) {
         return err;
     }
 
-    net_data_received = 1; // signal to the reader
+    net_data_received = true; // signal to the reader
     return 0;
 }
 
@@ -101,7 +101,7 @@ static int net_copy_to_user_buf(void *buf, size_t *const size) {
 
     // prior this write the interrupt could happen.
     // it is OK, as we still check for rb_is_empty in net_read
-    net_data_received = 0;
+    net_data_received = false;
     return 0;
 }
 
