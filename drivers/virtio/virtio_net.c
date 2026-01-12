@@ -113,6 +113,51 @@ virtio_net_init(VirtioNetDevice *virtio_net_dev, PciDevice *pci_dev) {
     return 0;
 }
 
+static void
+rx_queue_desc_handler(Virtq *virtq, VirtqUsedElem *const used_elem, void *args) {
+    assert(virtq);
+    assert(used_elem);
+    assert(args);
+
+    VirtqDescriptor *desc = &virtq->descriptor_table[used_elem->id];
+
+    const uint32_t msg_len = used_elem->len;
+    assert("virtio: message len is out of bounds" && msg_len < desc->length);
+
+    recv_handler_t packet_receiver = (recv_handler_t)args;
+    int err = packet_receiver((void *)virtq->descriptor_table[used_elem->id].address, msg_len);
+    if (err != 0) {
+        cprintf("%s: failed to receive packet from virtio-net with err = %d\n", __func__, err);
+    }
+
+    uint16_t avail_ring_idx = *virtq->available_ring.idx;
+    memory_fence();
+
+    virtq->available_ring.ring[avail_ring_idx % virtq->queue_size] = used_elem->id;
+
+    memory_fence();
+    *virtq->available_ring.idx += 1;
+}
+
+int
+virtio_net_handle_rx(VirtioNetDevice *virtio_net_dev, recv_handler_t packet_receiver) {
+    assert(virtio_net_dev);
+    int err = virtio_recycle_used(&virtio_net_dev->rx_virtq, rx_queue_desc_handler, packet_receiver);
+    if (err != 0) {
+        cprintf("%s: failed to recycle used virtio rings for rx queue with err = %d\n", __func__, err);
+        return err;
+    }
+
+    virtio_notify(&virtio_net_dev->virtio_dev, VIRTIO_NET_Q_RX);
+    return 0;
+}
+
+int
+virtio_net_handle_tx(VirtioNetDevice *virtio_net_dev) {
+    assert(virtio_net_dev);
+    return 0;
+}
+
 uint8_t
 get_virtio_net_irq_line(VirtioNetDevice *virtio_net_dev) {
     assert(virtio_net_dev);
@@ -123,24 +168,4 @@ uint8_t
 read_virtio_net_isr(VirtioNetDevice *virtio_net_dev) {
     assert(virtio_net_dev);
     return virtio_read_isr(&virtio_net_dev->virtio_dev);
-}
-
-void
-virtio_net_handle_rx(VirtioNetDevice *virtio_net_dev, recv_handler_t handler) {
-    assert(virtio_net_dev);
-    assert(handler);
-    virtio_recv_buffer(&virtio_net_dev->virtio_dev, &virtio_net_dev->rx_virtq, handler);
-}
-
-static void virtio_free_queue_desc(Virtq *virtq, uint16_t desc_id) {
-    assert(virtq);
-
-    virtq->descriptor_table[desc_id].address = 0;
-    virtq->descriptor_table[desc_id].length = 0;
-    virtq->descriptor_table[desc_id].flags = 0;
-
-    virtq->descriptor_table[desc_id].next = virtq->head_free_desc;
-    virtq->head_free_desc = desc_id;
-
-    virtq->cnt_free_desc += 1;
 }

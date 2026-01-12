@@ -51,7 +51,7 @@ static void nic_int_handler() {
     }
 
     if (isr & VIRTIO_ISR_QUEUE_INTERRUPT) {
-        int err = virtio_recv_buffer(&net_dev->virtio_dev, &net_dev->rx_virtq, net_recv_handler);
+        int err = virtio_net_handle_rx(net_dev, net_recv_handler);
         if (err != 0) {
             cprintf("net: failed to recieve network buffer with err = %d\n", err);
         }
