@@ -249,6 +249,7 @@ virtq_place_buffer(Virtq *virtq, void *buffer_va, uint32_t length, bool is_writa
     virtq->descriptor_table[free_desc].length = length;
     /* no support for chaining */
     virtq->descriptor_table[free_desc].flags = is_writable ? VIRTQ_DESC_F_WRITE : 0;
+    virtq->descriptor_table[free_desc].next = 0;
 
     virtq->head_free_desc = virtq->descriptor_table[free_desc].next;
     --virtq->cnt_free_desc;
@@ -257,7 +258,7 @@ virtq_place_buffer(Virtq *virtq, void *buffer_va, uint32_t length, bool is_writa
 }
 
 int
-virtio_free_buffer(Virtq *virtq, uint16_t desc_id) {
+virtq_free_buffer(Virtq *virtq, uint16_t desc_id) {
     assert(virtq);
 
     if (desc_id >= virtq->queue_size) {
@@ -277,19 +278,31 @@ virtio_free_buffer(Virtq *virtq, uint16_t desc_id) {
 }
 
 int
-virtio_send_buffer(VirtioDevice *virtio_dev, Virtq *virtq, void *buffer, uint32_t length, bool is_writable) {
+virtio_send_buffer(
+    VirtioDevice *virtio_dev,
+    Virtq *virtq,
+    void *buffer,
+    uint32_t length,
+    bool is_writable,
+    uint16_t *res_descr
+) {
     assert(virtq != NULL);
     assert(buffer != NULL);
     assert(length != 0);
+    assert(res_descr);
 
-    uint16_t head = 0;
-    int err = virtq_place_buffer(virtq, buffer, length, is_writable, &head);
+    int err = virtq_place_buffer(virtq, buffer, length, is_writable, res_descr);
     if (err != 0) {
         return err;
     }
 
     VirtqAvailable avail = virtq->available_ring;
-    avail.ring[*avail.idx % virtq->queue_size] = head;
+    uint16_t idx = *avail.idx;
+    memory_fence();
+
+    avail.ring[idx % virtq->queue_size] = *res_descr;
+
+    memory_fence();
     ++(*avail.idx);
 
     virtio_notify(virtio_dev, virtq->idx);

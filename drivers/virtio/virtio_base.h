@@ -169,11 +169,18 @@ uint8_t virtio_read_isr(VirtioDevice *virtio_dev);
 uint16_t virtio_read_notify(VirtioDevice *virtio_dev);
 void virtio_notify(VirtioDevice *virtio_dev, uint16_t id);
 
-int virtio_free_buffer(Virtq *virtq, uint16_t desc_id);
+int virtq_free_buffer(Virtq *virtq, uint16_t desc_id);
 
 typedef void (*desc_handler_t)(Virtq *, VirtqUsedElem *const, void *);
 int virtio_recycle_used(Virtq *virtq, desc_handler_t handler, void *handler_arg);
-int virtio_send_buffer(VirtioDevice *virtio_dev, Virtq *virtq, void *buffer, uint32_t length, bool is_writable);
+int virtio_send_buffer(
+    VirtioDevice *virtio_dev,
+    Virtq *virtq,
+    void *buffer,
+    uint32_t length,
+    bool is_writable,
+    uint16_t *res_descr
+);
 
 void virtio_enable_interrupts(Virtq *virtq);
 

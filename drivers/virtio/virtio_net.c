@@ -1,11 +1,15 @@
 #include <drivers/virtio/virtio_net.h>
 #include <inc/assert.h>
 #include <inc/error.h>
+#include <inc/string.h>
 
 #define JOS_KERNEL
 #include <kern/pmap.h>
 
-static uint8_t rx_descr_buf[PAGE_SIZE];
+static uint8_t rx_descr_buf[4 * PAGE_SIZE];
+static uint8_t tx_descr_buf[4 * PAGE_SIZE];
+
+static uint16_t processing_tx_desc = VIRTQ_INVALID_DESC;
 
 int
 virtio_net_setup_queues(VirtioNetDevice *virtio_net_dev) {
@@ -122,10 +126,24 @@ rx_queue_desc_handler(Virtq *virtq, VirtqUsedElem *const used_elem, void *args) 
     VirtqDescriptor *desc = &virtq->descriptor_table[used_elem->id];
 
     const uint32_t msg_len = used_elem->len;
-    assert("virtio: message len is out of bounds" && msg_len < desc->length);
+    assert("virtio-net: message len is out of bounds" && msg_len < desc->length);
+
+    if (msg_len < sizeof(VirtioNetReq)) {
+        cprintf("%s: too small packet recieved from device!\n", __func__);
+        return;
+    }
+
+    const uint8_t *const msg_buf = (uint8_t*)desc->address;
+    if (msg_buf == NULL) {
+        cprintf("%s: received null descriptor address\n", __func__);
+        return;
+    }
+
+    const uint8_t *const packet = msg_buf + sizeof(VirtioNetReq);
+    const size_t packet_len = msg_len - sizeof(VirtioNetReq);
 
     recv_handler_t packet_receiver = (recv_handler_t)args;
-    int err = packet_receiver((void *)virtq->descriptor_table[used_elem->id].address, msg_len);
+    int err = packet_receiver((void*)packet, packet_len);
     if (err != 0) {
         cprintf("%s: failed to receive packet from virtio-net with err = %d\n", __func__, err);
     }
@@ -152,9 +170,69 @@ virtio_net_handle_rx(VirtioNetDevice *virtio_net_dev, recv_handler_t packet_rece
     return 0;
 }
 
+static void
+tx_queue_desc_handler(Virtq *virtq, VirtqUsedElem *const used_elem, void *args) {
+    assert(virtq);
+    assert(used_elem);
+
+    int err = virtq_free_buffer(virtq, used_elem->id);
+    if (err != 0) {
+        cprintf("%s: failed to free tx virtq buffer with err = %d\n", __func__, err);
+        return;
+    }
+
+    if (used_elem->id == processing_tx_desc) {
+        if (args != NULL) {
+            sent_handler_t packet_sent_handler = (sent_handler_t)args;
+            packet_sent_handler();
+        }
+
+        processing_tx_desc = VIRTQ_INVALID_DESC;
+    }
+}
+
 int
-virtio_net_handle_tx(VirtioNetDevice *virtio_net_dev) {
+virtio_net_handle_tx(VirtioNetDevice *virtio_net_dev, sent_handler_t packet_sent) {
     assert(virtio_net_dev);
+
+    int err = virtio_recycle_used(&virtio_net_dev->tx_virtq, tx_queue_desc_handler, packet_sent);
+    if (err != 0) {
+        cprintf("%s: failed to recycle used virtio rings for tx queue with err = %d\n", __func__, err);
+        return err;
+    }
+
+    return 0;
+}
+
+int
+virtio_net_send_buffer(VirtioNetDevice *virtio_net_dev, void *const buf, const size_t len) {
+    assert(virtio_net_dev);
+
+    VirtioNetReq hdr = {};
+    memset(&hdr, 0, sizeof(hdr));
+
+    if (sizeof(hdr) + len > sizeof(tx_descr_buf)) {
+        cprintf("virtio-net: message is too big!\n");
+        return -E_NO_MEM;
+    }
+
+    memcpy(tx_descr_buf, &hdr, sizeof(hdr));
+    memcpy(tx_descr_buf + sizeof(hdr), buf, len);
+
+    int err = virtio_send_buffer(
+        &virtio_net_dev->virtio_dev,
+        &virtio_net_dev->tx_virtq,
+        tx_descr_buf,
+        len + sizeof(hdr),
+        false,
+        &processing_tx_desc
+    );
+    if (err != 0) {
+        cprintf("%s: failed to send virtio buffer with err = %d\n", __func__, err);
+        processing_tx_desc = VIRTQ_INVALID_DESC;
+        return err;
+    }
+
     return 0;
 }
 

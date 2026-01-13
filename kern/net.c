@@ -5,6 +5,8 @@
 #include <inc/error.h>
 #include <inc/net.h>
 #include <inc/ringbuf.h>
+#include <inc/string.h>
+#include <inc/x86.h>
 
 #include <kern/picirq.h>
 #include <kern/trap.h>
@@ -18,26 +20,24 @@ static uint8_t virtio_net_irq_line = 0;
 static uint8_t net_recv_data_buf[4 * PAGE_SIZE];
 static Ringbuf net_recv_data_rb;
 
-static bool net_data_received = 0;
+static bool net_data_received = false;
+static bool net_data_sending = false;
 
 static int net_recv_handler(void *buf, const size_t len) {
     assert(buf);
 
-    if (len < sizeof(VirtioNetReq)) {
-        cprintf("net: too small packet recieved from device!\n");
-        return -E_INVAL;
-    }
-
-    const uint8_t *const packet = (uint8_t*)buf + sizeof(VirtioNetReq);
-    const size_t packet_len = len - sizeof(VirtioNetReq);
-
-    int err = rb_write(&net_recv_data_rb, packet, packet_len);
+    int err = rb_write(&net_recv_data_rb, buf, len);
     if (err != 0) {
         cprintf("net: failed to write recieved packet to the ringbuf!\n");
         return err;
     }
 
     net_data_received = true; // signal to the reader
+    return 0;
+}
+
+static int net_sent_handler() {
+    net_data_sending = false; // signal to the writer
     return 0;
 }
 
@@ -53,9 +53,13 @@ static void nic_int_handler() {
     if (isr & VIRTIO_ISR_QUEUE_INTERRUPT) {
         int err = virtio_net_handle_rx(net_dev, net_recv_handler);
         if (err != 0) {
-            cprintf("net: failed to recieve network buffer with err = %d\n", err);
+            cprintf("net: failed to handle rx queues with err = %d\n", err);
         }
-        // TODO: implement tx buffer processing
+        
+        err = virtio_net_handle_tx(net_dev, net_sent_handler);
+        if (err != 0) {
+            cprintf("net: failed to handle tx queues with err = %d\n", err);
+        }
     }
     if (isr & VIRTIO_ISR_CONFIG_CHANGE) {
         panic("net: virtio-net config change ISR is not yet implemented\n");
@@ -105,6 +109,8 @@ static int net_copy_to_user_buf(void *buf, size_t *const size) {
     return 0;
 }
 
+// NOTE: this function only safely works when called from one process
+// TODO: modify me
 int net_read(void *buf, size_t *const size) {
     if (!rb_is_empty(&net_recv_data_rb)) {
         // return what we collected
@@ -112,13 +118,37 @@ int net_read(void *buf, size_t *const size) {
     }
 
     while (!net_data_received) {
+        // NOTE: it is better to use sched_yield() here.
+        // For now, leave cpu_pause() for simplicity.
         cpu_pause();
     }
     return net_copy_to_user_buf(buf, size);
 }
 
+// NOTE: this function only safely works when called from one process
+// TODO: modify me
 int net_write(void *buf, const size_t size) {
-    panic("%s: not yet implemented!\n", __func__);
+    if (net_data_sending) {
+        cprintf("net: cannot write message! Some other message is being processed at the moment!\n");
+        return -E_UNSPECIFIED;
+    }
+
+    net_data_sending = true;
+
+    int err = virtio_net_send_buffer(net_dev, buf, size);
+    if (err != 0) {
+        cprintf("net: failed to send buffer to virtio-net with err = %d\n", err);
+        net_data_sending = false;
+        return err;
+    }
+
+    // wait until data is actually sent
+    while (net_data_sending) {
+        // NOTE: it is better to use sched_yield() here.
+        // For now, leave cpu_pause() for simplicity.
+        cpu_pause();
+    }
+    return 0;
 }
 
 static int isprint(int c) {
