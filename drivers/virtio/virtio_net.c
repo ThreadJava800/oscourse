@@ -235,15 +235,3 @@ virtio_net_send_buffer(VirtioNetDevice *virtio_net_dev, void *const buf, const s
 
     return 0;
 }
-
-uint8_t
-get_virtio_net_irq_line(VirtioNetDevice *virtio_net_dev) {
-    assert(virtio_net_dev);
-    return virtio_get_irq_line(&virtio_net_dev->virtio_dev);
-}
-
-uint8_t
-read_virtio_net_isr(VirtioNetDevice *virtio_net_dev) {
-    assert(virtio_net_dev);
-    return virtio_read_isr(&virtio_net_dev->virtio_dev);
-}
