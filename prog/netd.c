@@ -74,14 +74,15 @@ typedef struct {
     Ipv4Addr target_ipv4;
 } __attribute__((packed)) ArpMacIp4Hdr;
 
+#define IPV4_HDR_LEN(x) (((x) & 0xF) * 4)
+#define IPV4_VERSION(x) ((x) >> 4)
+
 typedef struct {
-    uint8_t version : 4;
-    uint8_t hdr_length : 4;
+    uint8_t version_hdr_len;
     uint8_t tos;
     uint16_t total_length;
     uint16_t identification;
-    uint16_t flags : 3;
-    uint16_t fragment_offset : 13;
+    uint16_t flags_frag_offset;
     uint8_t ttl;
     uint8_t protocol;
     uint16_t header_checksum;
@@ -171,6 +172,20 @@ int
 handle_udp(UdpHdr *hdr, size_t length) {
     cprintf("%s: entry\n", __func__);
 
+    size_t hdr_len = ntoh16(hdr->length);
+    if (hdr_len != length) {
+        cprintf("%s: Invalid UDP packet length. "
+                "Expected %lu, but length field is %lu\n",
+                __func__,
+                length, hdr_len);
+        return -E_INVALID_PACKET;
+    }
+
+    uint8_t *data = (void *)hdr + sizeof(UdpHdr);
+    size_t data_len = length - sizeof(UdpHdr);
+
+    packet_dump(data, data_len);
+
     return 0;
 }
 
@@ -178,8 +193,9 @@ int
 handle_ipv4(Ipv4Hdr *hdr, size_t length) {
     cprintf("%s: entry\n", __func__);
 
-    void *payload = (void *)hdr + hdr->hdr_length;
-    size_t payload_length = length - hdr->hdr_length;
+    size_t hdr_len = IPV4_HDR_LEN(hdr->version_hdr_len);
+    void *payload = (void *)hdr + hdr_len;
+    size_t payload_length = length - hdr_len;
 
     switch (hdr->protocol) {
     case IPV4_PROTOCOL_UDP:
@@ -196,7 +212,6 @@ handle_packet(void *buffer, size_t length) {
     void *payload = buffer + sizeof(EthHdr);
     size_t payload_length = length - sizeof(EthHdr);
 
-    cprintf("%s: type %04X\n", __func__, eth_hdr->type);
     switch (ntoh16(eth_hdr->type)) {
     case ETH_TYPE_ARP:
         return handle_arp(payload, payload_length);

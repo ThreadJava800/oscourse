@@ -19,6 +19,7 @@ enum {
     E_NO_ENT = 10,         /* Not found */
     E_UNSUPPORTED = 11,    /* Unsupported */
     E_BAD_CAPABILITY = 12, /* Incorrect PCI capability */
+    E_INVALID_PACKET = 13, /* Incorrect network packet */
     MAXERROR
 };
 
