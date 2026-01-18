@@ -122,10 +122,8 @@ init_arp_hdr(ArpMacIp4Hdr *hdr, uint8_t opcode) {
 }
 
 int
-handle_arp(void *hdr, size_t length) {
+handle_arp(ArpMacIp4Hdr *arp_hdr, size_t length) {
     cprintf("%s: entry\n", __func__);
-
-    ArpMacIp4Hdr *arp_hdr = hdr;
 
     if (ntoh16(arp_hdr->hardware_type) != ARP_HARDWARE_TYPE_ETH) {
         cprintf("%s: Unknown hardware type %u\n", __func__, arp_hdr->hardware_type);
