@@ -27,7 +27,7 @@ void
 timers_init(void) {
     timertab[0] = timer_rtc;
     timertab[1] = timer_pit;
-    timertab[2] = timer_acpipm;
+    // timertab[2] = timer_acpipm;
     // timertab[3] = timer_hpet0;
     // timertab[4] = timer_hpet1;
 

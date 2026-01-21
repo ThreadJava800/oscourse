@@ -11,6 +11,7 @@
 
 .globl clock_thdlr
 .type clock_thdlr, @function
+.p2align 3
 clock_thdlr:
     call save_trapframe_trap
     # Set trap code for trapframe
@@ -20,6 +21,7 @@ clock_thdlr:
 
 .globl timer_thdlr
 .type timer_thdlr, @function
+.p2align 3
 timer_thdlr:
     call save_trapframe_trap
     # Set trap code for trapframe
@@ -30,6 +32,7 @@ timer_thdlr:
 # TODO: create a macro for IRQ handlers
 .globl device1_thdlr
 .type device1_thdlr, @function
+.p2align 3
 device1_thdlr:
     call save_trapframe_trap
     # Set trap code for trapframe
@@ -39,6 +42,7 @@ device1_thdlr:
 
 .globl device2_thdlr
 .type device2_thdlr, @function
+.p2align 3
 device2_thdlr:
     call save_trapframe_trap
     # Set trap code for trapframe

@@ -211,6 +211,11 @@ virtq_init(Virtq *virtq, uint16_t idx, void *buffer, size_t buffer_size, size_t 
         return -E_INVAL;
     }
 
+    for (uint16_t i = 0; i < virtq->queue_size - 1; i++) {
+        virtq->descriptor_table[i].next = i + 1;
+    }
+    virtq->descriptor_table[virtq->queue_size - 1].next = VIRTQ_INVALID_DESC;
+
     virtq->head_free_desc = 0;
     virtq->cnt_free_desc = queue_size;
     virtq->last_seen_used_desc = 0;
@@ -225,9 +230,9 @@ virtq_init(Virtq *virtq, uint16_t idx, void *buffer, size_t buffer_size, size_t 
 }
 
 static int
-virtq_place_buffer(Virtq *virtq, void *buffer, uint32_t length, bool is_writable, uint16_t *head) {
+virtq_place_buffer(Virtq *virtq, void *buffer_va, uint32_t length, bool is_writable, uint16_t *head) {
     assert(virtq != NULL);
-    assert(buffer != NULL);
+    assert(buffer_va != NULL);
     assert(length != 0);
     assert(head != NULL);
 
@@ -239,31 +244,65 @@ virtq_place_buffer(Virtq *virtq, void *buffer, uint32_t length, bool is_writable
     uint16_t free_desc = virtq->head_free_desc;
     *head = free_desc;
 
-    virtq->descriptor_table[free_desc].address = (uint64_t)buffer;
+    uint64_t buffer_pa = (uint64_t)PADDR(buffer_va);
+    virtq->descriptor_table[free_desc].address = buffer_pa;
     virtq->descriptor_table[free_desc].length = length;
     /* no support for chaining */
     virtq->descriptor_table[free_desc].flags = is_writable ? VIRTQ_DESC_F_WRITE : 0;
+    virtq->descriptor_table[free_desc].next = 0;
 
-    virtq->head_free_desc = (free_desc + 1) % virtq->queue_size;
+    virtq->head_free_desc = virtq->descriptor_table[free_desc].next;
     --virtq->cnt_free_desc;
 
     return 0;
 }
 
 int
-virtio_send_buffer(VirtioDevice *virtio_dev, Virtq *virtq, void *buffer, uint32_t length, bool is_writable) {
+virtq_free_buffer(Virtq *virtq, uint16_t desc_id) {
+    assert(virtq);
+
+    if (desc_id >= virtq->queue_size) {
+        cprintf("%s: descriptor id exeeds bounds: %d\n", __func__, desc_id);
+        return -E_INVAL;
+    }
+
+    virtq->descriptor_table[desc_id].address = 0;
+    virtq->descriptor_table[desc_id].length = 0;
+    virtq->descriptor_table[desc_id].flags = 0;
+
+    virtq->descriptor_table[desc_id].next = virtq->head_free_desc;
+    virtq->head_free_desc = desc_id;
+
+    virtq->cnt_free_desc++;
+    return 0;
+}
+
+int
+virtio_send_buffer(
+    VirtioDevice *virtio_dev,
+    Virtq *virtq,
+    void *buffer,
+    uint32_t length,
+    bool is_writable,
+    uint16_t *res_descr
+) {
     assert(virtq != NULL);
     assert(buffer != NULL);
     assert(length != 0);
+    assert(res_descr);
 
-    uint16_t head = 0;
-    int err = virtq_place_buffer(virtq, buffer, length, is_writable, &head);
+    int err = virtq_place_buffer(virtq, buffer, length, is_writable, res_descr);
     if (err != 0) {
         return err;
     }
 
     VirtqAvailable avail = virtq->available_ring;
-    avail.ring[*avail.idx % virtq->queue_size] = head;
+    uint16_t idx = *avail.idx;
+    memory_fence();
+
+    avail.ring[idx % virtq->queue_size] = *res_descr;
+
+    memory_fence();
     ++(*avail.idx);
 
     virtio_notify(virtio_dev, virtq->idx);
@@ -271,8 +310,7 @@ virtio_send_buffer(VirtioDevice *virtio_dev, Virtq *virtq, void *buffer, uint32_
 }
 
 int
-virtio_recv_buffer(VirtioDevice *virtio_dev, Virtq *virtq, recv_handler_t handler) {
-    assert(virtio_dev != NULL);
+virtio_recycle_used(Virtq *virtq, desc_handler_t handler, void *handler_arg) {
     assert(virtq != NULL);
 
     const uint16_t done_idx = *virtq->used_ring.idx;
@@ -282,9 +320,6 @@ virtio_recv_buffer(VirtioDevice *virtio_dev, Virtq *virtq, recv_handler_t handle
         return 0;
     }
 
-    VirtqAvailable *const avail_ring = &virtq->available_ring;
-
-    int res = 0;
     while (virtq->last_seen_used_desc != done_idx) {
         const uint16_t used_ring_idx = virtq->last_seen_used_desc % virtq->queue_size;
 
@@ -297,34 +332,14 @@ virtio_recv_buffer(VirtioDevice *virtio_dev, Virtq *virtq, recv_handler_t handle
         VirtqDescriptor *desc = &virtq->descriptor_table[used_elem->id];
         assert("virtio: chaining is not supported" && (desc->flags & VIRTQ_DESC_F_NEXT) == 0);
 
-        const uint32_t msg_len = used_elem->len;
-        assert("virtio: message len is out of bounds" && msg_len < desc->length);
-
-        if (res == 0) {
-            // if handler once failed, assume it won't be able to proceed next messages
-            res = handler((void *)virtq->descriptor_table[used_elem->id].address, msg_len);
+        if (handler) {
+            handler(virtq, used_elem, handler_arg);
         }
-
-        const uint16_t avail_ring_idx = *avail_ring->idx;
-        memory_fence();
-
-        virtq->available_ring.ring[avail_ring_idx % virtq->queue_size] = used_elem->id;
-
-        memory_fence();
-        *avail_ring->idx += 1;
 
         ++virtq->last_seen_used_desc;
     }
 
-    if (res != 0) {
-        cprintf(
-            "virtio: part of message was dropped! Recv handler was not able to proceed all the data with err = %d\n",
-            res
-        );
-    }
-
-    virtio_notify(virtio_dev, virtq->idx);
-    return res;
+    return 0;
 }
 
 int
