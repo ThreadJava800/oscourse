@@ -9,7 +9,6 @@ int (*volatile net_write)(void *buf, size_t size);
 int (*volatile cprintf)(const char *fmt, ...);
 void (*volatile packet_dump)(const uint8_t *const, const size_t);
 
-
 #define ETH_MTU            1500
 #define IP_HEADER_MIN_SIZE 20
 #define UDP_HEADER_SIZE    8
@@ -32,6 +31,7 @@ typedef struct {
     uint16_t type;
 } __attribute__((packed)) EthHdr;
 
+#define IPV4_PROTOCOL_TCP 0x06
 #define IPV4_PROTOCOL_UDP 0x11
 
 typedef struct {
@@ -103,6 +103,90 @@ typedef struct {
     Ipv4Addr addr;
 } SockAddr;
 
+#define TCP_FLAG_FIN 0x01
+#define TCP_FLAG_SYN 0x02
+#define TCP_FLAG_RST 0x04
+#define TCP_FLAG_PSH 0x08
+#define TCP_FLAG_ACK 0x10
+#define TCP_FLAG_URG 0x20
+
+#define TCP_STATE_CLOSED      0
+#define TCP_STATE_LISTEN      1
+#define TCP_STATE_SYN_SENT    2
+#define TCP_STATE_SYN_RCVD    3
+#define TCP_STATE_ESTABLISHED 4
+#define TCP_STATE_FIN_WAIT_1  5
+#define TCP_STATE_FIN_WAIT_2  6
+#define TCP_STATE_CLOSE_WAIT  7
+#define TCP_STATE_CLOSING     8
+#define TCP_STATE_LAST_ACK    9
+#define TCP_STATE_TIME_WAIT   10
+
+#define TCP_DEFAULT_MSS 1460
+#define TCP_DEFAULT_WINDOW 65535
+#define TCP_MAX_CONNECTIONS 10
+
+typedef struct {
+    uint16_t src_port;
+    uint16_t dst_port;
+    uint32_t seq_num;
+    uint32_t ack_num;
+    uint8_t  data_offset;  /* 4 bits */
+    uint8_t  flags;        /* 6 bits */
+    uint16_t window;
+    uint16_t checksum;
+    uint16_t urgent_ptr;
+    uint8_t  options[];
+} __attribute__((packed)) TcpHdr;
+
+typedef struct TcpConnection {
+    uint32_t    state;
+    uint32_t    local_ip;
+    uint32_t    remote_ip;
+    uint16_t    local_port;
+    uint16_t    remote_port;
+    
+    uint32_t    snd_una;
+    uint32_t    snd_nxt;
+    uint32_t    snd_wnd;
+    
+    uint32_t    rcv_nxt;
+    uint32_t    rcv_wnd;
+    
+    uint8_t     recv_buf[4096];
+    uint32_t    recv_buf_len;
+    uint32_t    recv_buf_read;
+    
+    uint8_t     send_buf[4096];
+    uint32_t    send_buf_len;
+    uint32_t    send_buf_sent;
+    
+    uint32_t    retransmit_timeout;
+    uint32_t    last_ack_time;
+    
+    uint32_t    cwnd;
+    uint32_t    ssthresh;
+    
+    struct TcpConnection *next;
+} TcpConnection;
+
+static TcpConnection tcp_connection_pool[TCP_MAX_CONNECTIONS];
+static bool tcp_connection_used[TCP_MAX_CONNECTIONS];
+TcpConnection *tcp_connections = NULL;
+int handle_tcp(TcpHdr *hdr, size_t length, Ipv4Addr src_ip, Ipv4Addr dst_ip);
+TcpConnection* tcp_find_connection(uint32_t src_ip, uint16_t src_port,
+                                   uint32_t dst_ip, uint16_t dst_port);
+TcpConnection* tcp_create_connection(uint32_t local_ip, uint16_t local_port,
+                                     uint32_t remote_ip, uint16_t remote_port);
+void tcp_free_connection(TcpConnection *conn);
+void send_tcp_packet(TcpConnection *conn, uint8_t flags, 
+                     uint8_t *data, uint16_t data_len);
+int handle_tcp_syn(TcpConnection *conn, TcpHdr *tcp_hdr, uint32_t seq, uint32_t src_ip_val);
+int handle_tcp_syn_ack(TcpConnection *conn, TcpHdr *tcp_hdr, uint32_t seq, uint32_t ack);
+int handle_tcp_ack(TcpConnection *conn, TcpHdr *tcp_hdr, uint32_t ack, 
+                   uint8_t *payload, uint16_t payload_len);
+int handle_tcp_fin(TcpConnection *conn);
+
 uint16_t
 ntoh16(uint16_t net_val) {
     return __builtin_bswap16(net_val);
@@ -111,6 +195,16 @@ ntoh16(uint16_t net_val) {
 uint16_t
 hton16(uint16_t net_val) {
     return __builtin_bswap16(net_val);
+}
+
+uint32_t
+ntoh32(uint32_t net_val) {
+    return __builtin_bswap32(net_val);
+}
+
+uint32_t
+hton32(uint32_t net_val) {
+    return __builtin_bswap32(net_val);
 }
 
 void
@@ -198,6 +292,8 @@ handle_ipv4(Ipv4Hdr *hdr, size_t length) {
     size_t payload_length = length - hdr_len;
 
     switch (hdr->protocol) {
+    case IPV4_PROTOCOL_TCP:
+        return handle_tcp(payload, payload_length, hdr->src_ip, hdr->dst_ip);
     case IPV4_PROTOCOL_UDP:
         return handle_udp(payload, payload_length);
     }
@@ -222,8 +318,368 @@ handle_packet(void *buffer, size_t length) {
     }
 }
 
+static inline uint16_t
+tcp_header_length(TcpHdr *hdr) {
+    return (hdr->data_offset >> 4) * 4;
+}
+
+TcpConnection*
+tcp_find_connection(uint32_t src_ip, uint16_t src_port,
+                    uint32_t dst_ip, uint16_t dst_port) {
+    TcpConnection *conn = tcp_connections;
+    while (conn) {
+        if (conn->local_ip == dst_ip && conn->local_port == dst_port &&
+            conn->remote_ip == src_ip && conn->remote_port == src_port) {
+            return conn;
+        }
+        conn = conn->next;
+    }
+    return NULL;
+}
+
+TcpConnection*
+tcp_create_connection(uint32_t local_ip, uint16_t local_port,
+                      uint32_t remote_ip, uint16_t remote_port) {
+    for (int i = 0; i < TCP_MAX_CONNECTIONS; i++) {
+        if (!tcp_connection_used[i]) {
+            TcpConnection *conn = &tcp_connection_pool[i];
+            memset(conn, 0, sizeof(TcpConnection));
+            
+            conn->state = TCP_STATE_CLOSED;
+            conn->local_ip = local_ip;
+            conn->local_port = local_port;
+            conn->remote_ip = remote_ip;
+            conn->remote_port = remote_port;
+            conn->rcv_wnd = TCP_DEFAULT_WINDOW;
+            conn->snd_wnd = TCP_DEFAULT_WINDOW;
+            conn->cwnd = 1;
+            conn->ssthresh = TCP_DEFAULT_WINDOW;
+            conn->snd_nxt = 1000 + (i * 1000);
+            conn->next = tcp_connections;
+            tcp_connections = conn;
+            
+            tcp_connection_used[i] = true;
+            cprintf("Created TCP connection at slot %d\n", i);
+            return conn;
+        }
+    }
+    cprintf("No free TCP connection slots\n");
+    return NULL;
+}
+
+void
+tcp_free_connection(TcpConnection *conn) {
+    int index = -1;
+    for (int i = 0; i < TCP_MAX_CONNECTIONS; i++) {
+        if (&tcp_connection_pool[i] == conn) {
+            index = i;
+            break;
+        }
+    }
+    
+    if (index >= 0) {
+        TcpConnection **prev = &tcp_connections;
+        while (*prev) {
+            if (*prev == conn) {
+                *prev = conn->next;
+                break;
+            }
+            prev = &((*prev)->next);
+        }
+        tcp_connection_used[index] = false;
+        cprintf("Freed TCP connection slot %d\n", index);
+    }
+}
+
+void
+send_tcp_packet(TcpConnection *conn, uint8_t flags, 
+                     uint8_t *data, uint16_t data_len) {
+    uint8_t packet[ETH_MTU];
+    EthHdr *eth = (EthHdr*)packet;
+    Ipv4Hdr *ip = (Ipv4Hdr*)(eth + 1);
+    TcpHdr *tcp = (TcpHdr*)(ip + 1);
+    uint8_t *payload = (uint8_t*)(tcp + 1);
+    bool found_mac = false;
+    for (int i = 0; i < MAX_ARP_TABLE_ELEM_CNT; i++) {
+        if (arp_table[i].ip.addr == conn->remote_ip) {
+            memcpy(eth->dst_mac, arp_table[i].mac, sizeof(MacAddr));
+            found_mac = true;
+            break;
+        }
+    }
+    
+    if (!found_mac) {
+        memcpy(eth->dst_mac, broadcast_mac_addr, sizeof(MacAddr));
+        cprintf("Warning: MAC address for IP %08x not found, using broadcast\n", conn->remote_ip);
+    }
+    
+    memcpy(eth->src_mac, guest_mac_addr, sizeof(MacAddr));
+    eth->type = hton16(ETH_TYPE_IPV4);
+    ip->version_hdr_len = 0x45;
+    ip->tos = 0;
+    ip->total_length = hton16(sizeof(Ipv4Hdr) + sizeof(TcpHdr) + data_len);
+    ip->identification = hton16(0);
+    ip->flags_frag_offset = 0;
+    ip->ttl = 64;
+    ip->protocol = IPV4_PROTOCOL_TCP;
+    ip->header_checksum = 0;
+    ip->src_ip.addr = conn->local_ip;
+    ip->dst_ip.addr = conn->remote_ip;
+    tcp->src_port = hton16(conn->local_port);
+    tcp->dst_port = hton16(conn->remote_port);
+    tcp->seq_num = hton32(conn->snd_nxt);
+    tcp->ack_num = hton32(conn->rcv_nxt);
+    tcp->data_offset = (sizeof(TcpHdr) / 4) << 4;
+    tcp->flags = flags;
+    tcp->window = hton16(conn->rcv_wnd);
+    tcp->checksum = 0;
+    tcp->urgent_ptr = 0;
+    if (data && data_len > 0) {
+        if (data_len <= ETH_MTU - sizeof(EthHdr) - sizeof(Ipv4Hdr) - sizeof(TcpHdr)) {
+            memcpy(payload, data, data_len);
+            conn->snd_nxt += data_len;
+        } else {
+            cprintf("Warning: Data too large for TCP packet\n");
+            data_len = 0;
+        }
+    }
+    if ((flags & TCP_FLAG_SYN) || (flags & TCP_FLAG_FIN)) {
+        conn->snd_nxt += 1;
+    }
+    size_t total_len = sizeof(EthHdr) + sizeof(Ipv4Hdr) + sizeof(TcpHdr) + data_len;
+    net_write(packet, total_len);
+    
+    cprintf("Sent TCP packet: flags=0x%x seq=%u ack=%u len=%u\n", 
+            flags, ntoh32(tcp->seq_num), ntoh32(tcp->ack_num), data_len);
+}
+
+int
+handle_tcp_syn(TcpConnection *conn, TcpHdr *tcp_hdr, uint32_t seq, uint32_t src_ip_val) {
+    if (conn->state == TCP_STATE_LISTEN) {
+        if (conn->remote_ip == 0 && conn->remote_port == 0) {
+            conn->state = TCP_STATE_SYN_RCVD;
+            conn->remote_ip = src_ip_val;
+            conn->remote_port = ntoh16(tcp_hdr->src_port);
+            conn->rcv_nxt = seq + 1;
+            if (conn->snd_nxt < 1000) {
+                conn->snd_nxt = 2000;
+            }
+            send_tcp_packet(conn, TCP_FLAG_SYN | TCP_FLAG_ACK, NULL, 0);
+            cprintf("TCP: Sent SYN-ACK for new connection\n");
+            return 0;
+        } else {
+            cprintf("TCP: Connection already initialized\n");
+            return -E_INVALID_EXE;
+        }
+    }
+    cprintf("TCP: Not in LISTEN state for SYN (state=%d)\n", conn->state);
+    return -E_UNSUPPORTED;
+}
+
+int
+handle_tcp_syn_ack(TcpConnection *conn, TcpHdr *tcp_hdr, uint32_t seq, uint32_t ack) {
+    if (conn->state == TCP_STATE_SYN_SENT) {
+        if (ack == conn->snd_una + 1) {
+            conn->state = TCP_STATE_ESTABLISHED;
+            conn->rcv_nxt = seq + 1;
+            conn->snd_una = ack;
+            send_tcp_packet(conn, TCP_FLAG_ACK, NULL, 0);
+            cprintf("TCP connection established\n");
+            return 0;
+        } else {
+            cprintf("TCP: Invalid ACK number: %u (expected %u)\n", ack, conn->snd_una + 1);
+        }
+    } else {
+        cprintf("TCP: Not in SYN_SENT state for SYN-ACK (state=%d)\n", conn->state);
+    }
+    return -E_INVALID_PACKET;
+}
+
+int
+handle_tcp_ack(TcpConnection *conn, TcpHdr *tcp_hdr, uint32_t ack, 
+                   uint8_t *payload, uint16_t payload_len) {
+    if (conn->state == TCP_STATE_ESTABLISHED || 
+        conn->state == TCP_STATE_CLOSE_WAIT ||
+        conn->state == TCP_STATE_FIN_WAIT_1 ||
+        conn->state == TCP_STATE_FIN_WAIT_2 ||
+        conn->state == TCP_STATE_CLOSING ||
+        conn->state == TCP_STATE_LAST_ACK) {
+        if (ack > conn->snd_una) {
+            conn->snd_una = ack;
+        }
+        if (payload_len > 0) {
+            uint32_t seq = ntoh32(tcp_hdr->seq_num);
+            if (seq == conn->rcv_nxt) {
+                uint32_t free_space = sizeof(conn->recv_buf) - conn->recv_buf_len;
+                if (payload_len <= free_space) {
+                    memcpy(conn->recv_buf + conn->recv_buf_len, payload, payload_len);
+                    conn->recv_buf_len += payload_len;
+                    conn->rcv_nxt += payload_len;
+                    cprintf("TCP: Received %u bytes, total buffered: %u\n", 
+                           payload_len, conn->recv_buf_len);
+                } else {
+                    cprintf("TCP: Receive buffer full (%u/%u)\n", 
+                           conn->recv_buf_len, sizeof(conn->recv_buf));
+                }
+                send_tcp_packet(conn, TCP_FLAG_ACK, NULL, 0);
+            } else {
+                cprintf("TCP: Unexpected sequence: %u (expected %u)\n", seq, conn->rcv_nxt);
+            }
+        } else if (ack > conn->snd_una) {
+            send_tcp_packet(conn, TCP_FLAG_ACK, NULL, 0);
+        }
+        
+        return 0;
+    }
+    
+    cprintf("TCP: ACK received in invalid state: %d\n", conn->state);
+    return -E_UNSUPPORTED;
+}
+
+int
+handle_tcp_fin(TcpConnection *conn) {
+    switch (conn->state) {
+        case TCP_STATE_ESTABLISHED:
+            conn->state = TCP_STATE_CLOSE_WAIT;
+            conn->rcv_nxt += 1;
+            send_tcp_packet(conn, TCP_FLAG_ACK, NULL, 0);
+            cprintf("TCP: Received FIN, sent ACK, state=CLOSE_WAIT\n");
+            break;
+            
+        case TCP_STATE_FIN_WAIT_1:
+            if (conn->snd_una == conn->snd_nxt) {
+                conn->state = TCP_STATE_TIME_WAIT;
+                cprintf("TCP: Received FIN, state=TIME_WAIT\n");
+            } else {
+                conn->state = TCP_STATE_CLOSING;
+                cprintf("TCP: Received FIN, state=CLOSING\n");
+            }
+            break;
+            
+        case TCP_STATE_FIN_WAIT_2:
+            conn->state = TCP_STATE_TIME_WAIT;
+            cprintf("TCP: Received FIN, state=TIME_WAIT\n");
+            break;
+            
+        default:
+            cprintf("TCP: FIN received in unexpected state: %d\n", conn->state);
+            return -E_UNSUPPORTED;
+    }
+    return 0;
+}
+int
+handle_tcp(TcpHdr *hdr, size_t length, Ipv4Addr src_ip, Ipv4Addr dst_ip) {
+    cprintf("%s: entry\n", __func__);
+    if (length < sizeof(TcpHdr)) {
+        cprintf("%s: TCP packet too short: %lu bytes\n", __func__, length);
+        return -E_INVALID_PACKET;
+    }
+    
+    uint16_t tcp_len = tcp_header_length(hdr);
+    if (tcp_len < sizeof(TcpHdr) || tcp_len > length) {
+        cprintf("%s: Invalid TCP header length: %u (packet length: %lu)\n", 
+                __func__, tcp_len, length);
+        return -E_INVALID_PACKET;
+    }
+    
+    uint8_t *payload = (uint8_t*)hdr + tcp_len;
+    uint16_t payload_len = length - tcp_len;
+    
+    uint32_t src_ip_val = src_ip.addr;
+    uint32_t dst_ip_val = dst_ip.addr;
+    uint16_t src_port = ntoh16(hdr->src_port);
+    uint16_t dst_port = ntoh16(hdr->dst_port);
+    TcpConnection *conn = tcp_find_connection(src_ip_val, src_port, 
+                                              dst_ip_val, dst_port);
+    if (!conn && (hdr->flags & TCP_FLAG_SYN) && !(hdr->flags & TCP_FLAG_ACK)) {
+        conn = tcp_find_connection(0, 0, dst_ip_val, dst_port);
+        
+        if (conn && conn->state == TCP_STATE_LISTEN) {
+            TcpConnection *new_conn = tcp_create_connection(
+                dst_ip_val, dst_port, src_ip_val, src_port);
+            
+            if (new_conn) {
+                new_conn->state = TCP_STATE_SYN_RCVD;
+                conn = new_conn;
+                cprintf("TCP: Created new connection for client\n");
+            } else {
+                cprintf("TCP: Failed to create new connection\n");
+                return -E_NO_MEM;
+            }
+        }
+    }
+    
+    if (!conn) {
+        cprintf("%s: No connection found for TCP packet\n", __func__);
+        return -E_UNSUPPORTED;
+    }
+    
+    uint32_t seq = ntoh32(hdr->seq_num);
+    uint32_t ack = ntoh32(hdr->ack_num);
+    
+    cprintf("TCP packet: flags=0x%02x seq=%u ack=%u len=%u state=%d\n",
+            hdr->flags, seq, ack, payload_len, conn->state);
+    if (hdr->flags & TCP_FLAG_RST) {
+        cprintf("TCP: Connection reset received\n");
+        tcp_free_connection(conn);
+        return 0;
+    }
+    if (hdr->flags & TCP_FLAG_SYN) {
+        if (hdr->flags & TCP_FLAG_ACK) {
+            return handle_tcp_syn_ack(conn, hdr, seq, ack);
+        } else {
+            return handle_tcp_syn(conn, hdr, seq, src_ip_val);
+        }
+    }
+    if (hdr->flags & TCP_FLAG_ACK) {
+        return handle_tcp_ack(conn, hdr, ack, payload, payload_len);
+    }
+    if (hdr->flags & TCP_FLAG_FIN) {
+        return handle_tcp_fin(conn);
+    }
+    if (payload_len > 0) {
+        return handle_tcp_ack(conn, hdr, ack, payload, payload_len);
+    }
+    
+    cprintf("%s: TCP packet with no actionable flags\n", __func__);
+    return 0;
+}
+
+int
+tcp_connect(Ipv4Addr addr, uint16_t port) {
+    uint16_t local_port = 1024 + (tcp_connection_used[0] ? 1 : 0);
+    
+    TcpConnection *conn = tcp_create_connection(
+        guest_ipv4_addr.addr, local_port, 
+        addr.addr, port);
+    
+    if (!conn) {
+        cprintf("TCP: Failed to create connection for connect\n");
+        return -E_NO_MEM;
+    }
+    
+    conn->state = TCP_STATE_SYN_SENT;
+    conn->snd_nxt = 3000;
+    conn->snd_una = conn->snd_nxt - 1;
+    send_tcp_packet(conn, TCP_FLAG_SYN, NULL, 0);
+    cprintf("TCP: Initiated connection to %08x:%u\n", addr.addr, port);
+    
+    return 0;
+}
+
 void
 umain(int argc, char **argv) {
+    for (int i = 0; i < TCP_MAX_CONNECTIONS; i++) {
+        tcp_connection_used[i] = false;
+    }
+    tcp_connections = NULL;
+    TcpConnection *http_listen = tcp_create_connection(
+        guest_ipv4_addr.addr, 80, 0, 0);
+    if (http_listen) {
+        http_listen->state = TCP_STATE_LISTEN;
+        cprintf("TCP: Listening on port 80\n");
+    }
+
     for (;;) {
         uint8_t recv_buf[128];
         size_t recv_buf_size = sizeof(recv_buf);
