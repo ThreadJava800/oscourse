@@ -11,7 +11,8 @@ KERN_LDFLAGS := $(LDFLAGS) -T kern/kernel.ld -nostdlib
 
 # We snatch the use of a couple handy source files
 # from the lib directory, to avoid gratuitous code duplication.
-KERN_SRCFILES := kern/bootstrap.S \
+KERN_SRCFILES := kern/acpi.c \
+			kern/bootstrap.S \
 			kern/entry.S \
 			kern/init.c \
 			kern/console.c \
@@ -21,8 +22,10 @@ KERN_SRCFILES := kern/bootstrap.S \
 			kern/pmap.c \
 			kern/env.c \
 			kern/kclock.c \
+			kern/net.c \
 			kern/picirq.c \
 			kern/printf.c \
+			kern/ringbuf.c \
 			kern/trap.c \
 			kern/trapentry.S \
 			kern/timer.c \
@@ -35,7 +38,11 @@ KERN_SRCFILES := kern/bootstrap.S \
 			kern/tsc.c \
 			kern/uefi.c \
 			kern/uefiasm.S \
-			kern/spinlock.c
+			kern/spinlock.c \
+			drivers/pci/pci.c \
+			drivers/virtio/virtio_base.c \
+			drivers/virtio/virtio_net.c \
+			drivers/virtio/virtio.c \
 
 ifeq ($(CONFIG_KSPACE),y)
 KERN_SRCFILES += kern/alloc.c

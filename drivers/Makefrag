@@ -1,0 +1,8 @@
+DRIVERS_DIR := drivers
+DRIVERS_SRC_DIR := $(DRIVERS_DIR)
+DRIVERS_OBJ_DIR := $(DRIVERS_DIR)
+
+OBJDIRS += $(DRIVERS_DIR)
+
+include $(DRIVERS_DIR)/pci/Makefrag
+include $(DRIVERS_DIR)/virtio/Makefrag

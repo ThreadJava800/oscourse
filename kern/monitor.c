@@ -1,6 +1,8 @@
 /* Simple command-line kernel monitor useful for
  * controlling the kernel and exploring the system interactively. */
 
+#include <drivers/pci/pci.h>
+
 #include <inc/stdio.h>
 #include <inc/string.h>
 #include <inc/memlayout.h>
@@ -31,6 +33,7 @@ int mon_start(int argc, char **argv, struct Trapframe *tf);
 int mon_stop(int argc, char **argv, struct Trapframe *tf);
 int mon_frequency(int argc, char **argv, struct Trapframe *tf);
 int mon_memory(int argc, char **argv, struct Trapframe *tf);
+int mon_pci_tree(int argc, char **argv, struct Trapframe *tf);
 
 struct Command {
     const char *name;
@@ -49,6 +52,11 @@ static struct Command commands[] = {
         {"timer_stop", "Stop timer", mon_stop},
         {"timer_freq", "Get timer frequency", mon_frequency},
         {"memory", "Display allocated memory pages", mon_memory},
+        {
+            "lspci",
+            "Display information about PCI buses in the systems and devices connected to them",
+            mon_pci_tree
+        },
 };
 #define NCOMMANDS (sizeof(commands) / sizeof(commands[0]))
 
@@ -142,6 +150,12 @@ mon_frequency(int argc, char **argv, struct Trapframe *tf) {
 int
 mon_memory(int argc, char **argv, struct Trapframe *tf) {
     dump_memory_lists();
+    return 0;
+}
+
+int
+mon_pci_tree(int argc, char **argv, struct Trapframe *tf) {
+    pci_dump_tree();
     return 0;
 }
 

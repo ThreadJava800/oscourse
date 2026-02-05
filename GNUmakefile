@@ -224,6 +224,7 @@ $(OBJDIR)/.vars.%: FORCE
 # Include Makefrags for subdirectories
 include kern/Makefrag
 include lib/Makefrag
+include drivers/Makefrag
 ifeq ($(CONFIG_KSPACE),y)
 include prog/Makefrag
 else
@@ -232,6 +233,13 @@ endif
 
 QEMUOPTS = -hda fat:rw:$(JOS_ESP) -serial mon:stdio -gdb tcp::$(GDBPORT)
 QEMUOPTS += -m 512M -M q35 -cpu Nehalem -d int,cpu_reset,mmu,pcall -no-reboot
+
+# netdev support
+QEMUOPTS += -netdev tap,id=n0,ifname=itask1_tap,script=no,downscript=no
+QEMUOPTS += -device virtio-net-pci,disable-modern=on,netdev=n0,mac=52:54:00:12:34:57
+
+#debug options
+#QEMUOPTS += -monitor stdio
 
 QEMUOPTS += $(shell if $(QEMU) -display none -help | grep -q '^-D '; then echo '-D qemu.log'; fi)
 IMAGES = $(OVMF_FIRMWARE) $(JOS_LOADER) $(OBJDIR)/kern/kernel $(JOS_ESP)/EFI/BOOT/kernel $(JOS_ESP)/EFI/BOOT/$(JOS_BOOTER)

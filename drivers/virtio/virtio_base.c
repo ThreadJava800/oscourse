@@ -1,0 +1,374 @@
+#include <drivers/virtio/virtio_base.h>
+#include <inc/assert.h>
+#include <inc/error.h>
+#include <inc/stdio.h>
+#include <inc/x86.h>
+
+#define JOS_KERNEL
+#include <kern/pmap.h>
+
+static uint16_t
+virtio_check(PciDevice *dev) {
+    uint16_t vid = pci_get_vid(dev);
+    uint16_t did = pci_get_did(dev);
+
+    if (vid == VIRTIO_PCI_VENDOR_ID &&
+        did >= VIRTIO_PCI_DEVICE_ID_START &&
+        did <= VIRTIO_PCI_DEVICE_ID_END) {
+        return did - VIRTIO_PCI_DEVICE_ID_START;
+    }
+
+    return 0;
+}
+
+int
+virtio_init(VirtioDevice *virtio_dev, PciDevice *pci_dev) {
+    assert(virtio_dev != NULL);
+    assert(pci_dev != NULL);
+
+    *virtio_dev = (VirtioDevice){};
+
+    virtio_dev->id = virtio_check(pci_dev);
+    if (virtio_dev->id == 0) {
+        cprintf("%s: PCI device %p isn't virtio device\n", __func__, pci_dev);
+        return -E_UNSUPPORTED;
+    }
+
+    virtio_dev->pci_dev = pci_dev;
+
+    return 0;
+}
+
+#define IMPL_VIRTIO_WRITE_FUN(bitsize)                                    \
+    void virtio_write##bitsize(VirtioDevice *virtio_dev,                  \
+                               uint8_t offset, uint##bitsize##_t value) { \
+        assert(virtio_dev != NULL);                                       \
+        PciDevice *pci_dev = virtio_dev->pci_dev;                         \
+        assert(pci_dev != NULL);                                          \
+        pci_access_write##bitsize(pci_dev, VIRTIO_PCI_IO_BAR_INDEX,       \
+                                  offset, value);                         \
+    }
+
+IMPL_VIRTIO_WRITE_FUN(8)
+IMPL_VIRTIO_WRITE_FUN(16)
+IMPL_VIRTIO_WRITE_FUN(32)
+IMPL_VIRTIO_WRITE_FUN(64)
+
+#undef IMPL_VIRTIO_WRITE_FUN
+
+#define IMPL_VIRTIO_READ_FUN(bitsize)                                     \
+    uint##bitsize##_t virtio_read##bitsize(VirtioDevice *virtio_dev,      \
+                                           uint8_t offset) {              \
+        assert(virtio_dev != NULL);                                       \
+        PciDevice *pci_dev = virtio_dev->pci_dev;                         \
+        assert(pci_dev != NULL);                                          \
+        return pci_access_read##bitsize(pci_dev, VIRTIO_PCI_IO_BAR_INDEX, \
+                                        offset);                          \
+    }
+
+IMPL_VIRTIO_READ_FUN(8)
+IMPL_VIRTIO_READ_FUN(16)
+IMPL_VIRTIO_READ_FUN(32)
+IMPL_VIRTIO_READ_FUN(64)
+
+#undef IMPL_VIRTIO_READ_FUN
+
+int
+virtio_set_queue(VirtioDevice *virtio_dev, Virtq *queue) {
+    assert(virtio_dev != NULL);
+
+    uint64_t phys_descr_table_addr = PADDR(queue->descriptor_table);
+    uint64_t div_val = phys_descr_table_addr / VIRTQ_ALIGNMENT;
+    assert(div_val < UINT32_MAX);
+
+    virtio_write32(virtio_dev, VIRTIO_PCI_OFFSET_QUEUE_ADDRESS,
+                   (uint32_t)div_val);
+    uint32_t read_val = virtio_read32(virtio_dev, VIRTIO_PCI_OFFSET_QUEUE_ADDRESS);
+    if (read_val != div_val) {
+        cprintf("%s: Queue address doesn't equal the given after set\n", __func__);
+        return -E_INVAL;
+    }
+
+    return 0;
+}
+
+int
+virtio_select_queue(VirtioDevice *virtio_dev, uint16_t index) {
+    assert(virtio_dev != NULL);
+    virtio_write16(virtio_dev, VIRTIO_PCI_OFFSET_QUEUE_SELECT,
+                   index);
+    uint16_t read_idx = virtio_read16(virtio_dev, VIRTIO_PCI_OFFSET_QUEUE_SELECT);
+    if (read_idx != index) {
+        cprintf("%s: Queue index doesn't equal the given after set\n", __func__);
+        return -E_INVAL;
+    }
+
+    return 0;
+}
+
+uint16_t
+virtio_read_queue_size(VirtioDevice *virtio_dev) {
+    assert(virtio_dev != NULL);
+    return virtio_read16(virtio_dev, VIRTIO_PCI_OFFSET_QUEUE_SIZE);
+}
+
+void
+virtio_reset(VirtioDevice *virtio_dev) {
+    assert(virtio_dev != NULL);
+    virtio_write8(virtio_dev, VIRTIO_PCI_OFFSET_QUEUE_DEVICE_STATUS,
+                  0);
+}
+
+void
+virtio_set_status(VirtioDevice *virtio_dev, uint8_t status) {
+    assert(virtio_dev != NULL);
+    virtio_write8(virtio_dev, VIRTIO_PCI_OFFSET_QUEUE_DEVICE_STATUS,
+                  status);
+}
+
+uint8_t
+virtio_read_status(VirtioDevice *virtio_dev) {
+    assert(virtio_dev);
+    return virtio_read8(virtio_dev, VIRTIO_PCI_OFFSET_QUEUE_DEVICE_STATUS);
+}
+
+uint32_t
+virtio_read_device_features(VirtioDevice *virtio_dev) {
+    assert(virtio_dev != NULL);
+    return virtio_read32(virtio_dev, VIRTIO_PCI_OFFSET_DEVICE_FEATURES);
+}
+
+void
+virtio_set_driver_features(VirtioDevice *virtio_dev, uint32_t features) {
+    assert(virtio_dev != NULL);
+    virtio_write32(virtio_dev, VIRTIO_PCI_OFFSET_GUEST_FEATURES,
+                   features);
+}
+
+uint8_t
+virtio_get_irq_line(VirtioDevice *virtio_dev) {
+    assert(virtio_dev);
+    return pci_get_irq_line(virtio_dev->pci_dev);
+}
+
+uint8_t
+virtio_read_isr(VirtioDevice *virtio_dev) {
+    assert(virtio_dev != NULL);
+    return virtio_read8(virtio_dev, VIRTIO_PCI_OFFSET_QUEUE_DEVICE_ISR);
+}
+
+uint16_t
+virtio_read_notify(VirtioDevice *virtio_dev) {
+    assert(virtio_dev != NULL);
+    return virtio_read16(virtio_dev, VIRTIO_PCI_OFFSET_QUEUE_NOTIFY);
+}
+
+void
+virtio_notify(VirtioDevice *virtio_dev, uint16_t id) {
+    assert(virtio_dev != NULL);
+    virtio_write16(virtio_dev, VIRTIO_PCI_OFFSET_QUEUE_NOTIFY, id);
+}
+
+static int
+virtq_init(Virtq *virtq, uint16_t idx, void *buffer, size_t buffer_size, size_t queue_size) {
+    if ((uintptr_t)buffer != ((uintptr_t)buffer & ~(VIRTQ_ALIGNMENT - 1))) {
+        cprintf("%s: Invalid buffer %p alignment\n", __func__, buffer);
+        return -E_INVAL;
+    }
+
+    if ((buffer_size & (buffer_size - 1)) != 0) {
+        cprintf("%s: Buffer size is not power of two\n", __func__);
+        return -E_INVAL;
+    }
+
+    virtq->buffer = buffer;
+    virtq->buffer_size = buffer_size;
+    virtq->descriptor_table = buffer;
+    virtq->queue_size = queue_size;
+    virtq->idx = idx;
+
+    size_t avail_offset = VIRTQ_DESC_ELEM_SIZE * queue_size;
+    void *curr_ptr = buffer + avail_offset;
+    virtq->available_ring.flags = curr_ptr + VIRTQ_AVAIL_FLAGS_OFFSET;
+    virtq->available_ring.idx = curr_ptr + VIRTQ_AVAIL_IDX_OFFSET;
+    virtq->available_ring.ring = curr_ptr + VIRTQ_AVAIL_RING_OFFSET;
+
+    size_t used_offset = avail_offset + VIRTQ_AVAIL_END_OFFSET(queue_size);
+    used_offset = (used_offset + VIRTQ_ALIGNMENT - 1) & ~(VIRTQ_ALIGNMENT - 1);
+
+    curr_ptr = buffer + used_offset;
+    virtq->used_ring.flags = curr_ptr + VIRTQ_USED_FLAGS_OFFSET;
+    virtq->used_ring.idx = curr_ptr + VIRTQ_USED_IDX_OFFSET;
+    virtq->used_ring.ring = curr_ptr + VIRTQ_USED_RING_OFFSET;
+
+    curr_ptr = buffer + used_offset + VIRTQ_USED_EVENT_OFFSET(queue_size);
+    virtq->used_ring.used_event = curr_ptr;
+
+    size_t total_size = used_offset + VIRTQ_USED_END_OFFSET(queue_size);
+    if (total_size > buffer_size) {
+        cprintf("%s: Buffer size isn't enough for queue structure\n", __func__);
+        *virtq = (Virtq){};
+        return -E_INVAL;
+    }
+
+    for (uint16_t i = 0; i < virtq->queue_size - 1; i++) {
+        virtq->descriptor_table[i].next = i + 1;
+    }
+    virtq->descriptor_table[virtq->queue_size - 1].next = VIRTQ_INVALID_DESC;
+
+    virtq->head_free_desc = 0;
+    virtq->cnt_free_desc = queue_size;
+    virtq->last_seen_used_desc = 0;
+
+    *virtq->available_ring.flags = 0;
+    *virtq->available_ring.idx = 0;
+
+    *virtq->used_ring.flags = 0;
+    *virtq->used_ring.idx = 0;
+
+    return 0;
+}
+
+static int
+virtq_place_buffer(Virtq *virtq, void *buffer_va, uint32_t length, bool is_writable, uint16_t *head) {
+    assert(virtq != NULL);
+    assert(buffer_va != NULL);
+    assert(length != 0);
+    assert(head != NULL);
+
+    if (virtq->cnt_free_desc == 0) {
+        cprintf("%s: No free descriptors\n", __func__);
+        return -E_NO_MEM;
+    }
+
+    uint16_t free_desc = virtq->head_free_desc;
+    *head = free_desc;
+
+    uint64_t buffer_pa = (uint64_t)PADDR(buffer_va);
+    virtq->descriptor_table[free_desc].address = buffer_pa;
+    virtq->descriptor_table[free_desc].length = length;
+    /* no support for chaining */
+    virtq->descriptor_table[free_desc].flags = is_writable ? VIRTQ_DESC_F_WRITE : 0;
+    virtq->descriptor_table[free_desc].next = 0;
+
+    virtq->head_free_desc = virtq->descriptor_table[free_desc].next;
+    --virtq->cnt_free_desc;
+
+    return 0;
+}
+
+int
+virtq_free_buffer(Virtq *virtq, uint16_t desc_id) {
+    assert(virtq);
+
+    if (desc_id >= virtq->queue_size) {
+        cprintf("%s: descriptor id exeeds bounds: %d\n", __func__, desc_id);
+        return -E_INVAL;
+    }
+
+    virtq->descriptor_table[desc_id].address = 0;
+    virtq->descriptor_table[desc_id].length = 0;
+    virtq->descriptor_table[desc_id].flags = 0;
+
+    virtq->descriptor_table[desc_id].next = virtq->head_free_desc;
+    virtq->head_free_desc = desc_id;
+
+    virtq->cnt_free_desc++;
+    return 0;
+}
+
+int
+virtio_send_buffer(
+    VirtioDevice *virtio_dev,
+    Virtq *virtq,
+    void *buffer,
+    uint32_t length,
+    bool is_writable,
+    uint16_t *res_descr
+) {
+    assert(virtq != NULL);
+    assert(buffer != NULL);
+    assert(length != 0);
+    assert(res_descr);
+
+    int err = virtq_place_buffer(virtq, buffer, length, is_writable, res_descr);
+    if (err != 0) {
+        return err;
+    }
+
+    VirtqAvailable avail = virtq->available_ring;
+    uint16_t idx = *avail.idx;
+    memory_fence();
+
+    avail.ring[idx % virtq->queue_size] = *res_descr;
+
+    memory_fence();
+    ++(*avail.idx);
+
+    virtio_notify(virtio_dev, virtq->idx);
+    return 0;
+}
+
+int
+virtio_recycle_used(Virtq *virtq, desc_handler_t handler, void *handler_arg) {
+    assert(virtq != NULL);
+
+    const uint16_t done_idx = *virtq->used_ring.idx;
+    memory_fence();
+
+    if (virtq->last_seen_used_desc == done_idx) {
+        return 0;
+    }
+
+    while (virtq->last_seen_used_desc != done_idx) {
+        const uint16_t used_ring_idx = virtq->last_seen_used_desc % virtq->queue_size;
+
+        VirtqUsedElem *const used_elem = &virtq->used_ring.ring[used_ring_idx];
+        if (used_elem->id >= virtq->queue_size) {
+            cprintf("virtio: used ring idx %d exeeds queue cnt!\n", used_elem->id);
+            return -E_UNSPECIFIED;
+        }
+
+        VirtqDescriptor *desc = &virtq->descriptor_table[used_elem->id];
+        assert("virtio: chaining is not supported" && (desc->flags & VIRTQ_DESC_F_NEXT) == 0);
+
+        if (handler) {
+            handler(virtq, used_elem, handler_arg);
+        }
+
+        ++virtq->last_seen_used_desc;
+    }
+
+    return 0;
+}
+
+int
+virtio_setup_queue(VirtioDevice *virtio_dev, Virtq *virtq, uint16_t idx, void *buffer, size_t buffer_size) {
+    assert(virtio_dev != NULL);
+    assert(virtq != NULL);
+    assert(buffer != NULL);
+    assert(buffer_size != 0);
+
+    int err = virtio_select_queue(virtio_dev, idx);
+    if (err != 0) {
+        return err;
+    }
+
+    uint16_t queue_size = virtio_read_queue_size(virtio_dev);
+    err = virtq_init(virtq, idx, buffer, buffer_size, queue_size);
+    if (err != 0) {
+        return err;
+    }
+
+    err = virtio_set_queue(virtio_dev, virtq);
+    if (err != 0) {
+        return err;
+    }
+
+    return 0;
+}
+
+void virtio_enable_interrupts(Virtq *virtq) {
+    assert(virtq);
+    *(virtq->available_ring.flags) &= ~VIRTQ_AVAIL_F_NO_INTERRUPT;
+}

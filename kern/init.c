@@ -3,6 +3,7 @@
 #include <inc/stdio.h>
 #include <inc/string.h>
 #include <inc/assert.h>
+#include <inc/net.h>
 #include <inc/uefi.h>
 #include <inc/memlayout.h>
 
@@ -19,13 +20,16 @@
 #include <kern/kdebug.h>
 #include <kern/traceopt.h>
 
+#include <drivers/pci/pci.h>
+#include <drivers/virtio/virtio.h>
+
 void
 timers_init(void) {
     timertab[0] = timer_rtc;
     timertab[1] = timer_pit;
-    timertab[2] = timer_acpipm;
-    timertab[3] = timer_hpet0;
-    timertab[4] = timer_hpet1;
+    // timertab[2] = timer_acpipm;
+    // timertab[3] = timer_hpet0;
+    // timertab[4] = timer_hpet1;
 
     for (int i = 0; i < MAX_TIMERS; i++) {
         if (timertab[i].timer_init) {
@@ -125,6 +129,19 @@ early_boot_pml4_init(void) {
 #endif
 }
 
+static void
+init_drivers() {
+    int err = pci_init();
+    if (err != 0) {
+        panic("Failed to init PCI driver with err = %d\n", err);
+    }
+
+    err = virtio_module_init();
+    if (err != 0) {
+        panic("Failed to init virtio drivers with err = %d\n", err);
+    }
+}
+
 void
 i386_init(void) {
     early_boot_pml4_init();
@@ -141,10 +158,18 @@ i386_init(void) {
     }
 
     /* Lab 6 memory management initialization functions */
-    init_memory();
+    // init_memory();
 
     pic_init();
     timers_init();
+
+    trap_init();
+
+    init_drivers();
+    int err = init_network();
+    if (err != 0) {
+        cprintf("Failed to init network with err = %d\n", err);
+    }
 
     /* Framebuffer init should be done after memory init */
     fb_init();
@@ -154,10 +179,12 @@ i386_init(void) {
     env_init();
 
     /* Choose the timer used for scheduling: hpet or pit */
-    timers_schedule("hpet0");
+    timers_schedule("rtc");
 
 #ifdef CONFIG_KSPACE
     /* Touch all you want */
+    // ENV_CREATE_KERNEL_TYPE(prog_test_net);
+    ENV_CREATE_KERNEL_TYPE(prog_netd);
     ENV_CREATE_KERNEL_TYPE(prog_test1);
     ENV_CREATE_KERNEL_TYPE(prog_test2);
     ENV_CREATE_KERNEL_TYPE(prog_test3);

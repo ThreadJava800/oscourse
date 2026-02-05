@@ -1,0 +1,8 @@
+DRIVERS_VIRTIO_DIR := virtio
+
+OBJDIRS += $(DRIVERS_VIRTIO_DIR)
+
+$(OBJDIR)/$(DRIVERS_OBJ_DIR)/virtio/%.o: $(DRIVERS_OBJ_DIR)/$(DRIVERS_VIRTIO_DIR)/%.c $(DRIVERS_OBJ_DIR)/$(DRIVERS_VIRTIO_DIR)/%.h
+	@echo + cc[DRIVERS/VIRTIO] $<
+	@mkdir -p $(@D)
+	$(V)$(CC) $(USER_CFLAGS) -c -o $@ $<
